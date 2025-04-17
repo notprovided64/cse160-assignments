@@ -24,6 +24,19 @@ let a_Position;
 let u_FragColor;
 let u_Size;
 
+const POINT = 0;
+const TRIANGLE = 1;
+const CIRCLE = 2;
+
+let g_selectedColor = [1.0, 1.0, 1.0, 1.0];
+let g_selectedSize = 5;
+let g_selectedType = POINT;
+let g_selectedSegments = 20;
+let g_drawingOn = false;
+let g_rotationAngle = 0;
+let g_funMode = false;
+let g_spinRate = 0.2
+
 function setupWebGL() {
   // Retrieve <canvas> element
   canvas = document.getElementById("webgl");
@@ -74,6 +87,12 @@ function setupUIFunctions() {
   document.getElementById("b-slider").addEventListener("mouseup", function () {
     g_selectedColor[2] = this.value / 100;
   });
+  document.getElementById("circle-slider").addEventListener("mouseup", function () {
+    g_selectedSegments= this.value;
+  });
+  document.getElementById("fun-slider").addEventListener("mouseup", function () {
+    g_spinRate = this.value / 100;
+  });
   document
     .getElementById("size-slider")
     .addEventListener("mouseup", function () {
@@ -81,29 +100,121 @@ function setupUIFunctions() {
     });
   document.getElementById("clear-btn").addEventListener("mouseup", function () {
     g_shapes_list = [];
+    g_drawingOn = false;
     renderAllShapes();
   });
+  document.getElementById("draw-btn").addEventListener("mouseup", function () {
+    g_drawingOn = true;
+    setupDrawing();
+    renderAllShapes();
+  });
+  document.getElementById("point-btn").addEventListener("mouseup", function () {
+    g_selectedType = POINT;
+  });
+  document.getElementById("triangle-btn").addEventListener("mouseup", function () {
+    g_selectedType = TRIANGLE;
+  });
+  document.getElementById("circle-btn").addEventListener("mouseup", function () {
+    g_selectedType = CIRCLE;
+  });
+  document.getElementById('fun-toggle').addEventListener('change', function() {
+    if (this.checked) {
+      g_funMode = true;
+    } else {
+      g_funMode = false;
+      g_rotationAngle = 0;
+    }
+  });
+
 }
 
-let g_selectedColor = [1.0, 1.0, 1.0, 1.0];
-let g_selectedSize = 5;
+const MAGIKARP_RED    = "#DF7669";
+const MAGIKARP_YELLOW = "#FFD998";
+const MAGIKARP_WHITE  = "#E7B9BB";
+
+function setupDrawing(){
+
+  // main body
+  drawColoredTriangle([0, 0, -0.6, 0.2, -0.6, -0.2], MAGIKARP_RED);
+  drawColoredTriangle([0, 0, -0.2, 0.6, 0.2, 0.6], MAGIKARP_RED);
+  drawColoredTriangle([0, 0, -0.2, 0.6, -0.6, 0.2], MAGIKARP_RED);
+  drawColoredTriangle([0, 0, 0.2, 0.6, 0.6, 0.2], MAGIKARP_RED);
+  drawColoredTriangle([0, 0, 0.6, 0.2, 0.6, -0.2], MAGIKARP_RED);
+  drawColoredTriangle([0, 0, 0.6, -0.2, 0.2, -0.6], MAGIKARP_RED);
+  drawColoredTriangle([0, 0, 0.2, -0.6, -0.2, -0.6], MAGIKARP_RED);
+  drawColoredTriangle([0, 0, -0.2, -0.6, -0.6, -0.2], MAGIKARP_RED);
+
+  // tail
+  drawColoredTriangle([0.6, 0.2, 0.6, -0.2, 1.0, 0.2], MAGIKARP_WHITE);
+  drawColoredTriangle([1.0, -0.2, 0.6, -0.2, 1.0, 0.2],  MAGIKARP_WHITE);
+
+  drawColoredTriangle([0.6, 0.2, 0.9, 0.4, 0.9, 0.2], MAGIKARP_RED);
+  drawColoredTriangle([0.9, 0.4, 0.9, 0.3, 1, 0.3], MAGIKARP_RED);
+  drawColoredTriangle([0.9, 0.2, 0.9, 0.3, 1, 0.3], MAGIKARP_RED);
+  drawColoredTriangle([0.9, 0.2, 1, 0.2, 1, 0.3], MAGIKARP_RED);
+
+  drawColoredTriangle([0.6, -0.2, 0.9, -0.4, 0.9, -0.2], MAGIKARP_RED);
+  drawColoredTriangle([0.9, -0.4, 0.9, -0.3, 1.0, -0.3], MAGIKARP_RED);
+  drawColoredTriangle([0.9, -0.2, 0.9, -0.3, 1.0, -0.3], MAGIKARP_RED);
+  drawColoredTriangle([0.9, -0.2, 1.0, -0.2, 1.0, -0.3], MAGIKARP_RED);
+
+  drawColoredTriangle([0.6, 0.2, 1.0, 0.3, 1.0, 0.2],  MAGIKARP_WHITE);
+  drawColoredTriangle([0.6, -0.2, 1.0, -0.3, 1.0, -0.2],  MAGIKARP_WHITE);
+
+  //fin
+  drawColoredTriangle([-0.2, -0.4, 0.0, -0.4, 0.3, -0.1],  MAGIKARP_WHITE);
+  drawColoredTriangle([0.0, -0.4, 0.3, -0.1, 0.5, -0.1],  MAGIKARP_WHITE);
+
+  //eye
+  drawColoredTriangle([-0.2, 0.4, -0.35, 0.2, -0.05, 0.2],  MAGIKARP_WHITE);
+  drawColoredTriangle([-0.2, 0, -0.35, 0.2, -0.05, 0.2],  MAGIKARP_WHITE);
+
+  //crown (top)
+  drawColoredTriangle([-0.2, 0.6, -0.1, 0.6, -0.2, 0.8],  MAGIKARP_YELLOW);
+  drawColoredTriangle([-0.2, 0.6, 0.1, 0.6, -0.05, 0.95],  MAGIKARP_YELLOW);
+  drawColoredTriangle([-0.1, 0.6, 0.2, 0.6, 0.15, 0.9],  MAGIKARP_YELLOW);
+
+  //crown (bottom)
+  drawColoredTriangle([0.2, -0.6, 0.1, -0.6, 0.2, -0.8],  MAGIKARP_YELLOW);
+  drawColoredTriangle([0.2, -0.6, -0.1, -0.6, 0.05, -0.95],  MAGIKARP_YELLOW);
+  drawColoredTriangle([0.1, -0.6, -0.2, -0.6, -0.15, -0.9],  MAGIKARP_YELLOW);
+
+  //whisker
+  drawColoredTriangle([-0.45, 0, -0.5, 0, -0.3, -0.5],  MAGIKARP_YELLOW);
+  drawColoredTriangle([-0.3, -0.5, -0.5, 0, -0.35, -0.5],  MAGIKARP_YELLOW);
+
+  drawColoredTriangle([-0.3, -0.5, -0.5, -0.65, -0.35, -0.5],  MAGIKARP_YELLOW);
+  drawColoredTriangle([-0.55, -0.65, -0.5, -0.65, -0.35, -0.5],  MAGIKARP_YELLOW);
+
+  drawColoredTriangle([-0.55, -0.65, -0.5, -0.65, -0.35, -1],  MAGIKARP_YELLOW);
+  drawColoredTriangle([-0.5, -0.65, -0.35, -1, -0.3, -0.95],  MAGIKARP_YELLOW);
+
+
+}
+
 function main() {
   setupUIFunctions();
   setupWebGL();
   connectVariablesToGLSL();
 
-  // Register function (event handler) to be called on a mouse press
   canvas.onmousedown = click;
   canvas.onmousemove = function (ev) {
     if (ev.buttons == 1) {
       click(ev);
     }
   };
-  // Specify the color for clearing <canvas>
   gl.clearColor(0.0, 0.0, 0.0, 1.0);
-
-  // Clear <canvas>
   gl.clear(gl.COLOR_BUFFER_BIT);
+  requestAnimationFrame(tick);
+}
+
+function tick() {
+  if (g_funMode) {
+    g_rotationAngle += g_spinRate;
+    if (g_rotationAngle >= 360) g_rotationAngle -= 360;
+  }
+  renderAllShapes();
+  requestAnimationFrame(tick);
 }
 
 function convertCoordsEvToGL(ev) {
@@ -120,6 +231,8 @@ function convertCoordsEvToGL(ev) {
 function renderAllShapes() {
   // Clear <canvas>
   gl.clear(gl.COLOR_BUFFER_BIT);
+  if (g_drawingOn)
+    setupDrawing()
 
   var len = g_shapes_list.length;
   for (var i = 0; i < len; i++) {
@@ -132,12 +245,28 @@ var g_shapes_list = [];
 function click(ev) {
   let [x, y] = convertCoordsEvToGL(ev);
 
-  // Store the coordinates to g_points array
-  let point = new Point();
-  point.position = [x, y];
-  point.color = g_selectedColor.slice();
-  point.size = g_selectedSize;
-  g_shapes_list.push(point);
+  if (g_selectedType == POINT) {
+      let point = new Point();
+      point.position = [x, y];
+      point.color = g_selectedColor.slice();
+      point.size = g_selectedSize;
+      g_shapes_list.push(point);
+  } else if (g_selectedType == TRIANGLE){
+      let point = new Triangle();
+      point.position = [x, y];
+      point.color = g_selectedColor.slice();
+      point.size = g_selectedSize;
+      g_shapes_list.push(point);
+  } else {
+      let point = new Circle();
+      point.segments = g_selectedSegments;
+      point.position = [x, y];
+      point.color = g_selectedColor.slice();
+      point.size = g_selectedSize;
+      g_shapes_list.push(point);
+  }
 
-  renderAllShapes();
+  if (!g_funMode) {
+    renderAllShapes();
+  }
 }

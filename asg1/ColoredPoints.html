@@ -10,6 +10,11 @@
             Please use a browser that supports "canvas"
         </canvas>
         <p>
+            <button id="point-btn">Point</button>
+            <button id="triangle-btn">Triangle</button>
+            <button id="circle-btn">Circle</button>
+        </p>
+        <p>
             Red
             <input type="range" min="0" max="100" value="100" id="r-slider" />
         </p>
@@ -28,16 +33,30 @@
             Size
             <input type="range" min="5" max="40" value="20" id="size-slider" />
         </p>
+        <p>
+            Circle Segments
+            <input type="range" min="5" max="100" value="20" id="circle-slider" />
+        </p>
 
         <p>
             <button id="clear-btn">Clear</button>
+            <button id="draw-btn">Draw</button>
+        </p>
+        <p>
+            <input type="checkbox" id="fun-toggle">
+            <label for="fun-toggle">fun mode (need to draw triangles manually for it to work. I'd make some large ones then watch it go)</label>
+        </p>
+        <p>
+            Fun Speed
+            <input type="range" min="1" max="100" value="20" id="fun-slider" />
+            <img src="drawing.webp" alt="original image">
         </p>
 
         <script src="../lib/webgl-utils.js"></script>
         <script src="../lib/webgl-debug.js"></script>
         <script src="../lib/cuon-utils.js"></script>
-        <script src="Circle.js"></script>
         <script src="Triangle.js"></script>
+        <script src="Circle.js"></script>
         <script src="Point.js"></script>
         <script src="ColoredPoints.js"></script>
     </body>
