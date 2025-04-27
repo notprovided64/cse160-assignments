@@ -2,10 +2,10 @@
 // Vertex shader program
 var VSHADER_SOURCE = `
   attribute vec4 a_Position;
-  uniform float u_Size;
+  uniform mat4 u_ModelMatrix;
+  uniform mat4 u_GlobalPositionMatrix;
   void main() {
-    gl_Position = a_Position;
-    gl_PointSize = u_Size;
+    gl_Position = u_GlobalPositionMatrix * u_ModelMatrix * a_Position;
   }
   `;
 
@@ -22,20 +22,13 @@ let canvas;
 let gl;
 let a_Position;
 let u_FragColor;
-let u_Size;
-
-const POINT = 0;
-const TRIANGLE = 1;
-const CIRCLE = 2;
+let u_ModelMatrix;
+let u_GlobalPositionMatrix
 
 let g_selectedColor = [1.0, 1.0, 1.0, 1.0];
-let g_selectedSize = 5;
-let g_selectedType = POINT;
-let g_selectedSegments = 20;
-let g_drawingOn = false;
-let g_rotationAngle = 0;
-let g_funMode = false;
-let g_spinRate = 0.2;
+let g_globalAngle = 0;
+var g_startTime = performance.now()/1000
+var g_seconds = performance.now()/1000 - g_startTime
 
 function setupWebGL() {
   // Retrieve <canvas> element
@@ -47,6 +40,8 @@ function setupWebGL() {
     console.log("Failed to get the rendering context for WebGL");
     return;
   }
+
+  gl.enable(gl.DEPTH_TEST);
 }
 
 function connectVariablesToGLSL() {
@@ -70,14 +65,27 @@ function connectVariablesToGLSL() {
     return;
   }
 
-  u_Size = gl.getUniformLocation(gl.program, "u_Size");
-  if (!u_Size) {
-    console.log("Failed to get the storage location of u_Size");
+  u_ModelMatrix = gl.getUniformLocation(gl.program, "u_ModelMatrix");
+  if (!u_ModelMatrix) {
+    console.log("Failed to get the storage location of u_ModelMatrix");
     return;
   }
+
+  u_GlobalPositionMatrix = gl.getUniformLocation(gl.program, "u_GlobalPositionMatrix");
+  if (!u_GlobalPositionMatrix) {
+    console.log("Failed to get the storage location of u_GlobalPositionMatrix");
+    return;
+  }
+
+
+  var iden = new Matrix4();
+  gl.uniformMatrix4fv(u_GlobalPositionMatrix, false, iden.elements)
+  gl.uniformMatrix4fv(u_ModelMatrix, false, iden.elements)
 }
 
-function setupUIFunctions() {}
+function setupUIFunctions() {
+  document.getElementById('angle_slider').addEventListener('mousemove', function() {g_globalAngle = this.value; })
+}
 
 const MAGIKARP_RED = "#DF7669";
 const MAGIKARP_YELLOW = "#FFD998";
@@ -155,13 +163,16 @@ function main() {
     }
   };
   gl.clearColor(0.0, 0.0, 0.0, 1.0);
-  //gl.clear(gl.COLOR_BUFFER_BIT);
-  //requestAnimationFrame(tick);
-  //
-  renderAllShapes();
+  gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+
+  requestAnimationFrame(tick);
+
+  //renderAllShapes();
 }
 
 function tick() {
+  g_seconds = performance.now()/1000 - g_startTime
+  console.log(g_seconds)
   renderAllShapes();
   requestAnimationFrame(tick);
 }
@@ -179,42 +190,240 @@ function convertCoordsEvToGL(ev) {
 
 function renderAllShapes() {
   // Clear <canvas>
-  gl.clear(gl.COLOR_BUFFER_BIT);
-  if (g_drawingOn) setupDrawing();
+  gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 
-  var len = g_shapes_list.length;
-  for (var i = 0; i < len; i++) {
-    g_shapes_list[i].render();
-  }
+  var globalRotMat = new Matrix4().rotate(g_globalAngle, 0, 1, 0);
+  gl.uniformMatrix4fv(u_GlobalPositionMatrix, false, globalRotMat.elements);
+  
+  // TODO slight y axis wiggle animation, can add way later
+  var spine = new Cube();
+  spine.color = [.0, 1.0, .0, 1.0];
+  spine.matrix.translate(-0.35,-0.1,-0.1);
+  spine.matrix.rotate(0, 0, 0, 1);
+  var spineMat = new Matrix4(spine.matrix)
+  spine.matrix.translate(-0,0,0.05);
+  spine.matrix.scale(0.5, 0.2, 0.1);
+  spine.render();
+
+  // TODO front side of body, including main body, whiskers, eye, fins 
+  var main_front = new Cube();
+  main_front.color = [1.0, 0.0, 0.0, 1.0];
+  main_front.matrix = new Matrix4(spineMat)
+  main_front.matrix.translate(-0.2, -0.3, 0);
+  //main_front.matrix.translate(0,-0.7,0);
+  //main_front.matrix.rotate(0, 0, 0, 1);
+  var main_frontMat = new Matrix4(main_front.matrix)
+  main_front.matrix.scale(0.4, 0.8, 0.2 );
+  main_front.render();
+
+  var main_front2 = new Cube();
+  main_front2.color = [1.0, 0.0, 0.0, 1.0];
+  main_front2.matrix = new Matrix4(main_frontMat)
+  main_front2.matrix.translate(-0.15, 0.1, 0);
+  //main_front2.matrix.rotate(0, 0, 0, 1);
+  var main_front2Mat = new Matrix4(main_front2.matrix)
+  main_front2.matrix.scale(0.2, 0.6, 0.2);
+  main_front2.render();
+
+  //var eye = new Cube();
+  //eye.color = [1.0, 1.0, 1.0, 1.0];
+  //eye.matrix = new Matrix4(main_front2Mat)
+  //eye.matrix.translate(0.25, 0.45, -0.025);
+  ////eye.matrix.rotate(0, 0, 0, 1);
+  //var eyeMat = new Matrix4(eye.matrix)
+  //eye.matrix.scale(0.15, 0.15, 0.25);
+  //eye.render();
+  //
+  //// pupil
+  //var eye = new Cube();
+  //eye.color = [.0, .0, .0, 1.0];
+  //eye.matrix = new Matrix4(eyeMat)
+  //eye.matrix.translate(0.05, 0.05, -0.01);
+  ////eye.matrix.rotate(0, 0, 0, 1);
+  //var eyeMat = new Matrix4(eye.matrix)
+  //eye.matrix.scale(0.04, 0.04, 0.27);
+  //eye.render();
+
+  // frill looking thing
+  var frill = new Cube();
+  frill.color = [0.9, .0, .0, 1.0];
+  frill.matrix = new Matrix4(main_frontMat)
+  frill.matrix.translate(0.2, -0.02, -0.025);
+  frill.matrix.rotate(-10, 0, 0, 1);
+  frillMat = new Matrix4(frill.matrix)
+  frill.matrix.scale(0.08, .85, 0.25);
+  frill.render();
+
+  var finL = new Cube();
+  finL.color = [0.9, .0, .0, 1.0];
+  finL.matrix = new Matrix4(main_frontMat)
+  finL.matrix.translate(0.25, 0.3, -0.05);
+  finL.matrix.rotate(-45, 0.5, 0, 1);
+  finLMat = new Matrix4(finL.matrix)
+  finL.matrix.scale(0.08, .35, 0.05);
+  finL.render();
+
+  var finL2 = new Cube();
+  finL2.color = [0.9, .0, .0, 1.0];
+  finL2.matrix = new Matrix4(finLMat);
+  finL2.matrix.translate(0.0, 0.35, 0);
+  finL2.matrix.rotate(-45, 0, 0, 1);
+  finL2Mat = new Matrix4(finL.matrix)
+  finL2.matrix.scale(0.08, .35, 0.05);
+  finL2.render();
+
+  var finInnerL = new TriangularPrism();
+  finInnerL.color = [0.9, 1, 1, 1.0];
+  finInnerL.matrix = new Matrix4(finLMat);
+  finInnerL.matrix.translate(0.14, 0.3, 0.01);
+  finInnerL.matrix.rotate(65, 0, 0, 1);
+  finInnerLMat = new Matrix4(finInnerL.matrix)
+  finInnerL.matrix.scale(0.55, .1, 0.03);
+  finInnerL.render();
+
+  var finInnerL2 = new TriangularPrism();
+  finInnerL2.color = [0.9, 1, 1, 1.0];
+  finInnerL2.matrix = new Matrix4(finInnerLMat);
+  finInnerL2.matrix.translate(0, -0.1, 0.01);
+  //finInnerL2.matrix.rotate(65, 0, 0, 1);
+  finInnerL2.matrix.scale(0.55, -.1, 0.03);
+  finInnerL2.render();
+  
+  var finR = new Cube();
+  finR.color = [0.9, .0, .0, 1.0];
+  finR.matrix = new Matrix4(main_frontMat)
+  finR.matrix.translate(0.25, 0.3, 0.2);
+  finR.matrix.rotate(-45, -0.5, 0, 1);
+  finRMat = new Matrix4(finR.matrix)
+  finR.matrix.scale(0.08, .35, 0.05);
+  finR.render();
+
+  var finR2 = new Cube();
+  finR2.color = [0.9, .0, .0, 1.0];
+  finR2.matrix = new Matrix4(finRMat)
+  finR2.matrix.translate(0.0, 0.35, 0);
+  finR2.matrix.rotate(-45, 0, 0, 1);
+  finR2Mat = new Matrix4(finR2.matrix)
+  finR2.matrix.scale(0.08, .35, 0.05);
+  finR2.render();
+
+  var finInnerR = new TriangularPrism();
+  finInnerR.color = [0.9, 1, 1, 1.0];
+  finInnerR.matrix = new Matrix4(finRMat);
+  finInnerR.matrix.translate(0.14, 0.3, 0.01);
+  finInnerR.matrix.rotate(65, 0, 0, 1);
+  finInnerRMat = new Matrix4(finInnerR.matrix)
+  finInnerR.matrix.scale(0.55, .1, 0.03);
+  finInnerR.render();
+
+  var finInnerR2 = new TriangularPrism();
+  finInnerR2.color = [0.9, 1, 1, 1.0];
+  finInnerR2.matrix = new Matrix4(finInnerRMat);
+  finInnerR2.matrix.translate(0, -0.1, 0.01);
+  //finInnerR2.matrix.rotate(65, 0, 0, 1);
+  finInnerR2.matrix.scale(0.55, -.1, 0.03);
+  finInnerR2.render();
+
+  // real eye
+  var test_cylinder = new Cylinder();
+  test_cylinder.matrix = new Matrix4(main_frontMat)
+  test_cylinder.matrix.translate(0.175, 0.62, -0.025)
+  test_cylinder.height = 0.25;
+  test_cylinder.size = 20;
+  test_cylinder.render()
+
+  var test_cylinder = new Cylinder();
+  test_cylinder.color = [0.0, 0, 0, 1]
+  test_cylinder.matrix = new Matrix4(main_frontMat)
+  test_cylinder.matrix.translate(0.175, 0.62, -0.027)
+  test_cylinder.height = 0.26;
+  test_cylinder.size = 3;
+  test_cylinder.render()
+
+  // TODO make tail
+
+  // TODO make whisker
+  
+  // TODO if extra time smooth body lines out with triprisms
+
+  // lip
+  var lip = new Cube();
+  lip.color = [1.0, .8, .8, 1.0];
+  lip.matrix = new Matrix4(main_front2Mat)
+  lip.matrix.translate(-0.001, -0.025, -0.025);
+  //lip.matrix.rotate(0, 0, 0, 1);
+  lip.matrix.scale(0.05, 0.65, 0.25);
+  lip.render();
+
+  // TODO back side including back tail and crowns
+  var main_back = new Cube();
+  main_back.color = [1.0, 0.0, 0.0, 1.0];
+  main_back.matrix = new Matrix4(spineMat)
+  main_back.matrix.translate(0.2, -0.3, 0);
+  //main_back.matrix.translate(0,-0.7,0);
+  //main_back.matrix.rotate(0, 0, 0, 1);
+  var main_backMat = new Matrix4(main_back.matrix)
+  main_back.matrix.scale(0.2, 0.8, 0.2);
+  main_back.render();
+
+  var main_back = new Cube();
+  main_back.color = [1.0, 0.0, 0.0, 1.0];
+  main_back.matrix = new Matrix4(main_backMat)
+  main_back.matrix.translate(0.2, 0.15, 0);
+  //main_back.matrix.rotate(0, 0, 0, 1);
+  var main_backMat = new Matrix4(main_back.matrix)
+  main_back.matrix.scale(0.2, 0.5, 0.2);
+  main_back.render();
+
+  var main_back = new Cube();
+  main_back.color = [1.0, .0, .0, 1.0];
+  main_back.matrix = new Matrix4(main_backMat)
+  main_back.matrix.translate(0.2, 0.1, 0);
+  //main_back.matrix.rotate(0, 0, 0, 1);
+  var main_backMat = new Matrix4(main_backMat)
+  main_back.matrix.scale(0.1, 0.2, 0.2);
+  main_back.render();
+  //var yube2 = new Cube();
+  //yube2.color = [1.0, 1.0, 0.0, 1.0];
+  //yube2.matrix.translate(-.7, -.5, -.5);
+  //yube2.matrix.rotate(0, 45, 45, 1);
+  //yube2.matrix.scale(1.5, 1, 0.5);
+  //yube2.render();
+
+  // top crown
+  var crown = new Cube();
+  crown.color = [1.0, .8, .8, 1.0];
+  crown.matrix = new Matrix4(main_front2Mat)
+  crown.matrix.translate(-0.001, -0.025, -0.025);
+  //crown.matrix.rotate(0, 0, 0, 1);
+  crown.matrix.scale(0.05, 0.65, 0.25);
+  crown.render();
+
 }
 
-var g_shapes_list = [];
-
 function click(ev) {
-  let [x, y] = convertCoordsEvToGL(ev);
-
-  if (g_selectedType == POINT) {
-    let point = new Point();
-    point.position = [x, y];
-    point.color = g_selectedColor.slice();
-    point.size = g_selectedSize;
-    g_shapes_list.push(point);
-  } else if (g_selectedType == TRIANGLE) {
-    let point = new Triangle();
-    point.position = [x, y];
-    point.color = g_selectedColor.slice();
-    point.size = g_selectedSize;
-    g_shapes_list.push(point);
-  } else {
-    let point = new Circle();
-    point.segments = g_selectedSegments;
-    point.position = [x, y];
-    point.color = g_selectedColor.slice();
-    point.size = g_selectedSize;
-    g_shapes_list.push(point);
-  }
-
-  if (!g_funMode) {
-    renderAllShapes();
-  }
+  //let [x, y] = convertCoordsEvToGL(ev);
+  //
+  //if (g_selectedType == POINT) {
+  //  let point = new Point();
+  //  point.position = [x, y];
+  //  point.color = g_selectedColor.slice();
+  //  point.size = g_selectedSize;
+  //  g_shapes_list.push(point);
+  //} else if (g_selectedType == TRIANGLE) {
+  //  let point = new Triangle();
+  //  point.position = [x, y];
+  //  point.color = g_selectedColor.slice();
+  //  point.size = g_selectedSize;
+  //  g_shapes_list.push(point);
+  //} else {
+  //  let point = new Circle();
+  //  point.segments = g_selectedSegments;
+  //  point.position = [x, y];
+  //  point.color = g_selectedColor.slice();
+  //  point.size = g_selectedSize;
+  //  g_shapes_list.push(point);
+  //}
+  //
+  //renderAllShapes();
 }
