@@ -202,11 +202,14 @@ function tick() {
   g_stats.begin();
   renderScene();
 
-  if (g_seconds > g_specialAnimationTime) {
-      g_specialAnimation = false;
-      g_startTime = performance.now() / 1000;
-  }
+  if (g_specialAnimation) {
 
+    if (g_seconds > g_specialAnimationTime) {
+        g_specialAnimation = false;
+        g_startTime = performance.now() / 1000;
+    }
+
+  }
   g_stats.end();
 
   requestAnimationFrame(tick);
