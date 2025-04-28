@@ -28,9 +28,19 @@ let u_GlobalPositionMatrix;
 let g_selectedColor = [1.0, 1.0, 1.0, 1.0];
 let g_globalAngle = 0;
 let g_headAngle = 0;
+let g_tailAngle = 0;
+let g_tailAngle2 = 0;
 var g_startTime = performance.now() / 1000;
 var g_seconds = performance.now() / 1000 - g_startTime;
 var g_animationOn = false;
+var g_stats;
+
+let g_isDragging = false;
+let g_previousMousePosition = { x: 0, y: 0 };
+let g_rotation = { x: 0, y: 0 };
+
+let g_specialAnimation = false;
+let g_specialAnimationTime = 2;
 
 function setupWebGL() {
   // Retrieve <canvas> element
@@ -99,6 +109,16 @@ function setupUIFunctions() {
       g_headAngle = this.value;
     });
   document
+    .getElementById("tail_slider")
+    .addEventListener("mousemove", function () {
+      g_tailAngle = this.value;
+    });
+  document
+    .getElementById("tail_slider2")
+    .addEventListener("mousemove", function () {
+      g_tailAngle2 = this.value;
+    });
+  document
     .getElementById("animation_checkbox")
     .addEventListener("change", function () {
       if (this.checked) {
@@ -108,76 +128,61 @@ function setupUIFunctions() {
         g_animationOn = false;
       }
     });
+
+  let canvas = document.getElementById("webgl");
+  canvas.addEventListener('mousedown', (e) => {
+      g_isDragging = true;
+      g_previousMousePosition = { x: e.clientX, y: e.clientY };
+  });
+
+  canvas.addEventListener('mousemove', (e) => {
+      if (!g_isDragging) return;
+
+      const deltaX = e.clientX - g_previousMousePosition.x;
+      const deltaY = e.clientY - g_previousMousePosition.y;
+
+      const sensitivity = 0.5;
+
+      g_rotation.y += deltaX * sensitivity;
+      g_rotation.x += deltaY * sensitivity;
+
+      //in radians, probably should fix this
+      const maxRotationX = 90; // degrees
+      const minRotationX = -90;
+      g_rotation.x = Math.max(minRotationX, Math.min(maxRotationX, g_rotation.x));
+
+      g_previousMousePosition = { x: e.clientX, y: e.clientY };
+  });
+
+  canvas.addEventListener('mouseup', (e) => {
+      isDragging = false;
+  });
+
+  canvas.addEventListener('mouseleave', (e) => {
+      isDragging = false;
+  });
+
+  canvas.addEventListener('click', (event) => {
+    if (event.shiftKey) {
+      console.log('Shift+Click detected on canvas!');
+      g_specialAnimation = true;
+      g_startTime = performance.now() / 1000;
+    }
+  });
 }
 
-const MAGIKARP_RED = "#DF7669";
-const MAGIKARP_YELLOW = "#FFD998";
-const MAGIKARP_WHITE = "#E7B9BB";
-
-function setupDrawing() {
-  // main body
-  drawColoredTriangle([0, 0, -0.6, 0.2, -0.6, -0.2], MAGIKARP_RED);
-  drawColoredTriangle([0, 0, -0.2, 0.6, 0.2, 0.6], MAGIKARP_RED);
-  drawColoredTriangle([0, 0, -0.2, 0.6, -0.6, 0.2], MAGIKARP_RED);
-  drawColoredTriangle([0, 0, 0.2, 0.6, 0.6, 0.2], MAGIKARP_RED);
-  drawColoredTriangle([0, 0, 0.6, 0.2, 0.6, -0.2], MAGIKARP_RED);
-  drawColoredTriangle([0, 0, 0.6, -0.2, 0.2, -0.6], MAGIKARP_RED);
-  drawColoredTriangle([0, 0, 0.2, -0.6, -0.2, -0.6], MAGIKARP_RED);
-  drawColoredTriangle([0, 0, -0.2, -0.6, -0.6, -0.2], MAGIKARP_RED);
-
-  // tail
-  drawColoredTriangle([0.6, 0.2, 0.6, -0.2, 1.0, 0.2], MAGIKARP_WHITE);
-  drawColoredTriangle([1.0, -0.2, 0.6, -0.2, 1.0, 0.2], MAGIKARP_WHITE);
-
-  drawColoredTriangle([0.6, 0.2, 0.9, 0.4, 0.9, 0.2], MAGIKARP_RED);
-  drawColoredTriangle([0.9, 0.4, 0.9, 0.3, 1, 0.3], MAGIKARP_RED);
-  drawColoredTriangle([0.9, 0.2, 0.9, 0.3, 1, 0.3], MAGIKARP_RED);
-  drawColoredTriangle([0.9, 0.2, 1, 0.2, 1, 0.3], MAGIKARP_RED);
-
-  drawColoredTriangle([0.6, -0.2, 0.9, -0.4, 0.9, -0.2], MAGIKARP_RED);
-  drawColoredTriangle([0.9, -0.4, 0.9, -0.3, 1.0, -0.3], MAGIKARP_RED);
-  drawColoredTriangle([0.9, -0.2, 0.9, -0.3, 1.0, -0.3], MAGIKARP_RED);
-  drawColoredTriangle([0.9, -0.2, 1.0, -0.2, 1.0, -0.3], MAGIKARP_RED);
-
-  drawColoredTriangle([0.6, 0.2, 1.0, 0.3, 1.0, 0.2], MAGIKARP_WHITE);
-  drawColoredTriangle([0.6, -0.2, 1.0, -0.3, 1.0, -0.2], MAGIKARP_WHITE);
-
-  //fin
-  drawColoredTriangle([-0.2, -0.4, 0.0, -0.4, 0.3, -0.1], MAGIKARP_WHITE);
-  drawColoredTriangle([0.0, -0.4, 0.3, -0.1, 0.5, -0.1], MAGIKARP_WHITE);
-
-  //eye
-  drawColoredTriangle([-0.2, 0.4, -0.35, 0.2, -0.05, 0.2], MAGIKARP_WHITE);
-  drawColoredTriangle([-0.2, 0, -0.35, 0.2, -0.05, 0.2], MAGIKARP_WHITE);
-
-  //crown (top)
-  drawColoredTriangle([-0.2, 0.6, -0.1, 0.6, -0.2, 0.8], MAGIKARP_YELLOW);
-  drawColoredTriangle([-0.2, 0.6, 0.1, 0.6, -0.05, 0.95], MAGIKARP_YELLOW);
-  drawColoredTriangle([-0.1, 0.6, 0.2, 0.6, 0.15, 0.9], MAGIKARP_YELLOW);
-
-  //crown (bottom)
-  drawColoredTriangle([0.2, -0.6, 0.1, -0.6, 0.2, -0.8], MAGIKARP_YELLOW);
-  drawColoredTriangle([0.2, -0.6, -0.1, -0.6, 0.05, -0.95], MAGIKARP_YELLOW);
-  drawColoredTriangle([0.1, -0.6, -0.2, -0.6, -0.15, -0.9], MAGIKARP_YELLOW);
-
-  //whisker
-  drawColoredTriangle([-0.45, 0, -0.5, 0, -0.3, -0.5], MAGIKARP_YELLOW);
-  drawColoredTriangle([-0.3, -0.5, -0.5, 0, -0.35, -0.5], MAGIKARP_YELLOW);
-
-  drawColoredTriangle([-0.3, -0.5, -0.5, -0.65, -0.35, -0.5], MAGIKARP_YELLOW);
-  drawColoredTriangle(
-    [-0.55, -0.65, -0.5, -0.65, -0.35, -0.5],
-    MAGIKARP_YELLOW,
-  );
-
-  drawColoredTriangle([-0.55, -0.65, -0.5, -0.65, -0.35, -1], MAGIKARP_YELLOW);
-  drawColoredTriangle([-0.5, -0.65, -0.35, -1, -0.3, -0.95], MAGIKARP_YELLOW);
-}
+const MAGIKARP_RED = [0.8745, 0.4627, 0.4118, 1];
+const MAGIKARP_YELLOW = [1.0, 0.8510, 0.5961, 1];
+const MAGIKARP_WHITE = [0.9059, 0.7255, 0.7333, 1];
 
 function main() {
   setupUIFunctions();
   setupWebGL();
   connectVariablesToGLSL();
+
+  g_stats = new Stats();
+  g_stats.showPanel(0); // 0: fps, 1: ms, 2: mb, 3+: custom
+  document.body.appendChild(g_stats.dom);
 
   canvas.onmousedown = click;
   canvas.onmousemove = function (ev) {
@@ -189,14 +194,21 @@ function main() {
   gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 
   requestAnimationFrame(tick);
-
-  //renderAllShapes();
 }
 
 function tick() {
   g_seconds = performance.now() / 1000 - g_startTime;
   //console.log(g_seconds);
-  renderAllShapes();
+  g_stats.begin();
+  renderScene();
+
+  if (g_seconds > g_specialAnimationTime) {
+      g_specialAnimation = false;
+      g_startTime = performance.now() / 1000;
+  }
+
+  g_stats.end();
+
   requestAnimationFrame(tick);
 }
 
@@ -211,24 +223,33 @@ function convertCoordsEvToGL(ev) {
   return [x, y];
 }
 
-function renderAllShapes() {
+function renderScene() {
   // Clear <canvas>
   gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 
   var globalRotMat = new Matrix4().rotate(g_globalAngle, 0, 1, 0);
+  globalRotMat.rotate(g_rotation.x, 1, 0, 0);
+  globalRotMat.rotate(g_rotation.y, 0, 1, 0);
   gl.uniformMatrix4fv(u_GlobalPositionMatrix, false, globalRotMat.elements);
 
-  // TODO slight y axis wiggle animation, can add way later
   var spine = new Cube();
   spine.color = [0.0, 1.0, 0.0, 1.0];
   spine.matrix.translate(-0.35, -0.1, -0.1);
+  if (g_animationOn) {
+    spine.matrix.translate(0, Math.sin(g_seconds / 2) * 0.05, 0);
+  }
+  if (g_specialAnimation) {
+    spine.matrix.rotate(Math.sin(g_seconds) * 360, 0, 1, 1);
+    if (Math.sin(g_seconds) * 360 > 350) {
+      g_specialAnimation = false;
+    }
+  }
   spine.matrix.rotate(0, 0, 0, 1);
   var spineMat = new Matrix4(spine.matrix);
   spine.matrix.translate(-0, 0, 0.05);
   spine.matrix.scale(0.5, 0.2, 0.1);
   //spine.render();
 
-  // TODO front side of body, including main body, whiskers, eye, fins
   var main_front = new Cube();
   main_front.color = [1.0, 0.0, 0.0, 1.0];
   main_front.matrix = new Matrix4(spineMat);
@@ -241,6 +262,7 @@ function renderAllShapes() {
   if (g_animationOn) {
     main_front.matrix.rotate(Math.sin(g_seconds / 2) * 30, 0, 1, 0);
   } else {
+    //TODO
     main_front.matrix.rotate(g_headAngle, 0, 1, 0);
   }
   main_front.matrix.translate(-0.4, -0.4, -0.1);
@@ -300,6 +322,11 @@ function renderAllShapes() {
   finL.matrix = new Matrix4(main_frontMat);
   finL.matrix.translate(0.25, 0.3, -0.05);
   finL.matrix.rotate(-45, 0.5, 0, 1);
+  // -15 - 15 + 15
+  if (g_animationOn) {
+    finL.matrix.rotate((Math.sin(g_seconds / 0.2) * 15 )+ 15, -0, 0.5, 0);
+  }
+  //finL.matrix.rotate(g_headAngle, -0, 0.5, 0);
   finLMat = new Matrix4(finL.matrix);
   finL.matrix.scale(0.08, 0.35, 0.05);
   finL.render();
@@ -465,14 +492,15 @@ function renderAllShapes() {
 
   // TODO back side including back tail and crowns
   var main_back = new Cube();
-  main_back.color = [1.0, 0.0, 0.0, 1.0];
+  main_back.color =[1,0,0,1]
   main_back.matrix = new Matrix4(spineMat);
   main_back.matrix.translate(0.2, -0.3, 0);
   //main_back.matrix.translate(0,-0.7,0);
   //main_back.matrix.rotate(0, 0, 0, 1);
   main_back.matrix.translate(0, 0, 0.1);
-  main_back.matrix.rotate(Math.sin(g_seconds / 2) * 5, 0, 1, 0);
-  //main_back.matrix.rotate(g_headAngle, 0, 1, 0);
+  if (g_animationOn) {
+    main_back.matrix.rotate(Math.sin(g_seconds / 2) * 5, 0, 1, 0);
+  }
   main_back.matrix.translate(0, 0, -0.1);
   var main_backMat = new Matrix4(main_back.matrix);
   main_back.matrix.scale(0.3, 0.8, 0.2);
@@ -482,6 +510,13 @@ function renderAllShapes() {
   main_back.color = [1.0, 0.0, 0.0, 1.0];
   main_back.matrix = new Matrix4(main_backMat);
   main_back.matrix.translate(0.3, 0.15, 0.0125);
+  main_back.matrix.translate(0, 0, 0.1);
+  if (g_animationOn) {
+    main_back.matrix.rotate(Math.sin(g_seconds / 2) * 10, 0, 1, 0);
+  } else {
+    main_back.matrix.rotate(g_tailAngle, 0, 1, 0);
+  }
+  main_back.matrix.translate(0, 0, -0.1);
   //main_back.matrix.rotate(0, 0, 0, 1);
   var main_backMat = new Matrix4(main_back.matrix);
   main_back.matrix.scale(0.2, 0.5, 0.175);
@@ -491,6 +526,13 @@ function renderAllShapes() {
   main_back.color = [1.0, 0.0, 0.0, 1.0];
   main_back.matrix = new Matrix4(main_backMat);
   main_back.matrix.translate(0.2, 0.1, 0);
+  main_back.matrix.translate(0, 0, 0.1);
+  if (g_animationOn) {
+    main_back.matrix.rotate(Math.sin(g_seconds / 2) * 20, 0, 1, 0);
+  } else {
+    main_back.matrix.rotate(g_tailAngle2, 0, 1, 0);
+  }
+  main_back.matrix.translate(0, 0, -0.1);
   //main_back.matrix.rotate(0, 0, 0, 1);
   var main_backMat = new Matrix4(main_back.matrix);
   main_back.matrix.scale(0.1, 0.2, 0.2);
@@ -556,5 +598,5 @@ function click(ev) {
   //  g_shapes_list.push(point);
   //}
   //
-  //renderAllShapes();
+  //();
 }
