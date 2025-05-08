@@ -1,18 +1,46 @@
-// store information about per block uv mapping and types/their textures here
-//
-import { Matrix4, Vector3 } from "../lib/cuon-matrix-cse160";
+//import { Matrix4, Vector3 } from "../lib/cuon-matrix-cse160";
 
-
- const BlockType = Object.freeze({
+const BlockType = Object.freeze({
   AIR: 0,
-  GRASS: 1,
-  STONE: 2,
-  DIRT: 3,
-  WATER: 4,
-  SAND: 5
+  DIRT: 1,
+  WOOD: 2,
+  STONE: 3,
 });
 
-export default class Cube {
+const NUM_BLOCK_TEXTURES = Object.keys(BlockType).length - 1; // subtract 1 for air block
+
+// all faces are the same rn
+//
+// prettier-ignore
+const BLOCK_GEOMETRY = {
+  front: [
+    // x, y, z, u, v
+    [0, 0, 1, 0, 0], [1, 0, 1, 1, 0], [1, 1, 1, 1, 1],
+    [1, 1, 1, 1, 1], [0, 1, 1, 0, 1], [0, 0, 1, 0, 0],
+  ],
+  back: [
+    [1, 0, 0, 0, 0], [0, 0, 0, 1, 0], [0, 1, 0, 1, 1],
+    [0, 1, 0, 1, 1], [1, 1, 0, 0, 1], [1, 0, 0, 0, 0],
+  ],
+  left: [
+    [0, 0, 0, 0, 0], [0, 0, 1, 1, 0], [0, 1, 1, 1, 1],
+    [0, 1, 1, 1, 1], [0, 1, 0, 0, 1], [0, 0, 0, 0, 0],
+  ],
+  right: [
+    [1, 0, 1, 0, 0], [1, 0, 0, 1, 0], [1, 1, 0, 1, 1],
+    [1, 1, 0, 1, 1], [1, 1, 1, 0, 1], [1, 0, 1, 0, 0],
+  ],
+  top: [
+    [0, 1, 1, 0, 0], [1, 1, 1, 1, 0], [1, 1, 0, 1, 1],
+    [1, 1, 0, 1, 1], [0, 1, 0, 0, 1], [0, 1, 1, 0, 0],
+  ],
+  bottom: [
+    [0, 0, 0, 0, 0], [1, 0, 0, 1, 0], [1, 0, 1, 1, 1],
+    [1, 0, 1, 1, 1], [0, 0, 1, 0, 1], [0, 0, 0, 0, 0],
+  ],
+};
+
+class CoolCube {
   constructor() {
     this.vertices = null;
     this.uvs = null;
@@ -55,7 +83,7 @@ export default class Cube {
           gl.RGBA,
           gl.RGBA,
           gl.UNSIGNED_BYTE,
-          img
+          img,
         );
 
         gl.uniform1i(uTexture0, 0);
@@ -86,7 +114,7 @@ export default class Cube {
           gl.RGBA,
           gl.RGBA,
           gl.UNSIGNED_BYTE,
-          img
+          img,
         );
 
         gl.uniform1i(uTexture1, 1);
@@ -160,7 +188,7 @@ export default class Cube {
     const viewMatrix = gl.getUniformLocation(gl.program, "viewMatrix");
     const projectionMatrix = gl.getUniformLocation(
       gl.program,
-      "projectionMatrix"
+      "projectionMatrix",
     );
 
     gl.uniformMatrix4fv(modelMatrix, false, this.modelMatrix.elements);
@@ -168,7 +196,7 @@ export default class Cube {
     gl.uniformMatrix4fv(
       projectionMatrix,
       false,
-      camera.projectionMatrix.elements
+      camera.projectionMatrix.elements,
     );
 
     if (this.vertexBuffer === null) {

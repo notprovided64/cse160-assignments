@@ -130,41 +130,41 @@ function setupUIFunctions() {
     });
 
   let canvas = document.getElementById("webgl");
-  canvas.addEventListener('mousedown', (e) => {
-      g_isDragging = true;
-      g_previousMousePosition = { x: e.clientX, y: e.clientY };
+  canvas.addEventListener("mousedown", (e) => {
+    g_isDragging = true;
+    g_previousMousePosition = { x: e.clientX, y: e.clientY };
   });
 
-  canvas.addEventListener('mousemove', (e) => {
-      if (!g_isDragging) return;
+  canvas.addEventListener("mousemove", (e) => {
+    if (!g_isDragging) return;
 
-      const deltaX = e.clientX - g_previousMousePosition.x;
-      const deltaY = e.clientY - g_previousMousePosition.y;
+    const deltaX = e.clientX - g_previousMousePosition.x;
+    const deltaY = e.clientY - g_previousMousePosition.y;
 
-      const sensitivity = 0.5;
+    const sensitivity = 0.5;
 
-      g_rotation.y += deltaX * sensitivity;
-      g_rotation.x += deltaY * sensitivity;
+    g_rotation.y += deltaX * sensitivity;
+    g_rotation.x += deltaY * sensitivity;
 
-      //in radians, probably should fix this
-      const maxRotationX = 90; // degrees
-      const minRotationX = -90;
-      g_rotation.x = Math.max(minRotationX, Math.min(maxRotationX, g_rotation.x));
+    //in radians, probably should fix this
+    const maxRotationX = 90; // degrees
+    const minRotationX = -90;
+    g_rotation.x = Math.max(minRotationX, Math.min(maxRotationX, g_rotation.x));
 
-      g_previousMousePosition = { x: e.clientX, y: e.clientY };
+    g_previousMousePosition = { x: e.clientX, y: e.clientY };
   });
 
-  canvas.addEventListener('mouseup', (e) => {
-      isDragging = false;
+  canvas.addEventListener("mouseup", (e) => {
+    isDragging = false;
   });
 
-  canvas.addEventListener('mouseleave', (e) => {
-      isDragging = false;
+  canvas.addEventListener("mouseleave", (e) => {
+    isDragging = false;
   });
 
-  canvas.addEventListener('click', (event) => {
+  canvas.addEventListener("click", (event) => {
     if (event.shiftKey) {
-      console.log('Shift+Click detected on canvas!');
+      console.log("Shift+Click detected on canvas!");
       g_specialAnimation = true;
       g_startTime = performance.now() / 1000;
     }
@@ -172,7 +172,7 @@ function setupUIFunctions() {
 }
 
 const MAGIKARP_RED = [0.8745, 0.4627, 0.4118, 1];
-const MAGIKARP_YELLOW = [1.0, 0.8510, 0.5961, 1];
+const MAGIKARP_YELLOW = [1.0, 0.851, 0.5961, 1];
 const MAGIKARP_WHITE = [0.9059, 0.7255, 0.7333, 1];
 
 function main() {
@@ -203,12 +203,10 @@ function tick() {
   renderScene();
 
   if (g_specialAnimation) {
-
     if (g_seconds > g_specialAnimationTime) {
-        g_specialAnimation = false;
-        g_startTime = performance.now() / 1000;
+      g_specialAnimation = false;
+      g_startTime = performance.now() / 1000;
     }
-
   }
   g_stats.end();
 
@@ -327,7 +325,7 @@ function renderScene() {
   finL.matrix.rotate(-45, 0.5, 0, 1);
   // -15 - 15 + 15
   if (g_animationOn) {
-    finL.matrix.rotate((Math.sin(g_seconds / 0.2) * 15 )+ 15, -0, 0.5, 0);
+    finL.matrix.rotate(Math.sin(g_seconds / 0.2) * 15 + 15, -0, 0.5, 0);
   }
   //finL.matrix.rotate(g_headAngle, -0, 0.5, 0);
   finLMat = new Matrix4(finL.matrix);
@@ -495,10 +493,10 @@ function renderScene() {
 
   // TODO back side including back tail and crowns
   var main_back = new Cube();
-  main_back.color =[1,0,0,1]
+  main_back.color = [1, 0, 0, 1];
   main_back.matrix = new Matrix4(spineMat);
   main_back.matrix.translate(0.2, -0.3, 0);
-  //main_back.matrix.translate(0,-0.7,0);
+  //main_back.matrix.translate(0, -0.7, 0);
   //main_back.matrix.rotate(0, 0, 0, 1);
   main_back.matrix.translate(0, 0, 0.1);
   if (g_animationOn) {

@@ -1,51 +1,116 @@
-// information about chunk goes here, including how to render
-//
-const CHUNK_SIZE = {x: 32, y: 32, z:32}
+const CHUNK_SIZE = { x: 32, y: 4, z: 32 };
 
 function newChunk() {
   return new Uint8Array(CHUNK_SIZE.x * CHUNK_SIZE.y * CHUNK_SIZE.z).fill(0);
 }
 
 function isValidChunk(chunk) {
-  return (chunk instanceof Uint8Array) && chunk.length == (CHUNK_SIZE.x * CHUNK_SIZE.y * CHUNK_SIZE.z);
+  return (
+    chunk instanceof Uint8Array &&
+    chunk.length == CHUNK_SIZE.x * CHUNK_SIZE.y * CHUNK_SIZE.z
+  );
 }
 
 function chunkFillLayer(chunk, yIndex, blockId) {
   if (!isValidChunk(chunk)) {
-    throw new TypeError('invalid chunk data');
+    throw new TypeError("invalid chunk data");
   }
   if (yIndex >= CHUNK_SIZE.y) {
-    throw new ValueError('invalid layerIndex');
+    throw new ValueError("invalid layerIndex");
   }
   // we can just pray that blockid is set correctly lol
 
   // should maybe be correct
   offset = yIndex * CHUNK_SIZE.x;
   for (let i = 0; i < CHUNK_SIZE.x; i++) {
-    for (let j = 0 < j < CHUNK_SIZE.z)
-    chunk[offset + i + (j * CHUNK_SIZE.x * CHUNK_SIZE.y)] = blockId;
+    for (let j = 0; j < CHUNK_SIZE.z; j++)
+      chunk[offset + i + j * CHUNK_SIZE.x * CHUNK_SIZE.y] = blockId;
   }
 }
 
 function chunkSetBlock(chunk, blockId, coords) {
   if (!isValidChunk(chunk)) {
-    throw new TypeError('invalid chunk data');
+    throw new TypeError("invalid chunk data");
   }
   if (
     !Array.isArray(coords) ||
     coords.length !== 3 ||
     !coords.every(Number.isInteger)
   ) {
-    throw new TypeError('invalid coords');
+    throw new TypeError("invalid coords");
   }
 
   x = coords[0];
   y = coords[1];
   z = coords[2];
 
-  chunk[x + (CHUNK_SIZE.x * y) + (CHUNK_SIZE.x * CHUNK_SIZE.y * z)] = blockId;
+  chunk[x + CHUNK_SIZE.x * y + CHUNK_SIZE.x * CHUNK_SIZE.y * z] = blockId;
 }
 
+function chunkGenerateMesh(chunk) {
+  if (!isValidChunk(chunk)) {
+    throw new TypeError("invalid chunk data");
+  }
 
+  const index = (x, y, z) =>
+    x + CHUNK_SIZE.x * y + CHUNK_SIZE.x * CHUNK_SIZE.y * z;
 
-class
+  // TODO could move this to block,js
+  const faceNormals = {
+    front: [0, 0, 1],
+    back: [0, 0, -1],
+    left: [-1, 0, 0],
+    right: [1, 0, 0],
+    top: [0, 1, 0],
+    bottom: [0, -1, 0],
+  };
+
+  const isAir = (x, y, z) => {
+    if (
+      x < 0 ||
+      y < 0 ||
+      z < 0 ||
+      x >= CHUNK_SIZE.x ||
+      y >= CHUNK_SIZE.y ||
+      z >= CHUNK_SIZE.z
+    )
+      return false; // TODO change to true when we have a bigger chunk size working
+
+    return chunkData[index(x, y, z)] === BlockType.AIR;
+  };
+
+  const vertices = [];
+
+  for (let z = 0; z < CHUNK_SIZE.z; z++) {
+    for (let y = 0; y < CHUNK_SIZE.y; y++) {
+      for (let x = 0; x < CHUNK_SIZE.x; x++) {
+        const blockId = chunk[index(x, y, z)];
+        if (blockId == BlockType.AIR) {
+          continue;
+        }
+
+        for (const [face, faceVertices] of Object.entries(BLOCK_GEOMETRY)) {
+          const [dx, dy, dz] = faceNormals[face];
+
+          // TODO change later so we don't render unnecessary blocks
+          //const nx = x + dx, ny = y +dy, nz = z + dz;
+          //if (outOfBounds(chunk, nx, ny, nz))) {
+          //continue;
+          //} else if (chunkData[index(x, y, z)] !== BlockType.AIR){
+          //  //continue;
+          //}
+
+          // adding face vertices and uv map to
+          for (const [vx, vy, vz, u, v] of faceVertices) {
+            // layer given through blockId - 1, starts at Wood, goes to stone and so on
+            vertices.push(vx + x, vy + y, vz + z, u, v, blockId - 1);
+          }
+        }
+      }
+    }
+  }
+
+  return new Float32Array(vertices);
+}
+
+function renderChunkMesh(vertices) {}
