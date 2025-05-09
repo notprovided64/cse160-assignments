@@ -8,6 +8,8 @@ const texturePaths = [dirtTexturePath, woodTexturePath, stoneTexturePath];
 var VSHADER_SOURCE = `
 uniform mat4 u_GlobalPositionMatrix;
 uniform mat4 u_ModelMatrix;
+uniform mat4 u_ViewMatrix;
+uniform mat4 u_ProjectionMatrix;
 
 attribute vec4 a_Position;
 attribute vec2 a_UV;
@@ -17,7 +19,7 @@ varying vec2 v_UV;
 varying float v_TexIndex;
 
 void main() {
-  gl_Position = u_GlobalPositionMatrix * u_ModelMatrix * a_Position;
+  gl_Position = u_ProjectionMatrix * u_ViewMatrix * u_GlobalPositionMatrix * u_ModelMatrix * a_Position;
   v_UV = a_UV;
   v_TexIndex = a_TexIndex;
 }
@@ -36,6 +38,7 @@ void main() {
   int index = int(v_TexIndex);
   vec4 color;
 
+  //color = texture2D(u_Textures[index], v_UV);
   if (index == 0) {
       color = texture2D(u_Textures[0], v_UV);
   } else if (index == 1) {
@@ -69,6 +72,8 @@ let a_TexIndex;
 let u_ModelMatrix;
 let u_GlobalPositionMatrix;
 let u_Textures;
+let u_ViewMatrix;
+let u_ProjectionMatrix;
 
 let g_Vbo;
 
@@ -83,6 +88,7 @@ var g_seconds = performance.now() / 1000 - g_startTime;
 let g_isDragging = false;
 let g_previousMousePosition = { x: 0, y: 0 };
 let g_rotation = { x: 0, y: 0 };
+let g_position = { x: 0.0, y: 0.0 };
 
 //block data
 let g_testChunk = newChunk();
@@ -101,13 +107,16 @@ function setupWebGL() {
   gl.enable(gl.DEPTH_TEST);
   connectVariablesToGLSL();
 
-  loadTextures(texturePaths).then((textures) => {
+  loadTexturesSeq(texturePaths).then((textures) => {
     textures.forEach((tex, i) => {
       gl.activeTexture(gl.TEXTURE0 + i);
       gl.bindTexture(gl.TEXTURE_2D, tex);
     });
 
-    gl.uniform1iv(u_Textures, [0, 1, 2]);
+    gl.uniform1iv(
+      u_Textures,
+      textures.map((_, i) => i),
+    );
   });
 
   g_Vbo = gl.createBuffer();
@@ -165,6 +174,17 @@ function connectVariablesToGLSL() {
     console.log("Failed to get the storage location of u_GlobalPositionMatrix");
     return;
   }
+  u_ViewMatrix = gl.getUniformLocation(gl.program, "u_ViewMatrix");
+  if (!u_ViewMatrix) {
+    console.log("Failed to get the storage location of u_ViewMatrix");
+    return;
+  }
+  u_ProjectionMatrix = gl.getUniformLocation(gl.program, "u_ProjectionMatrix");
+  if (!u_ProjectionMatrix) {
+    console.log("Failed to get the storage location of u_ProjectionMatrix");
+    return;
+  }
+
   u_Textures = gl.getUniformLocation(gl.program, "u_Textures");
   if (!u_Textures) {
     console.log("Failed to get the storage location of u_Textures");
@@ -178,6 +198,15 @@ function connectVariablesToGLSL() {
 
 function loadTextures(urls) {
   return Promise.all(urls.map((url) => loadTexture(url)));
+}
+
+async function loadTexturesSeq(urls) {
+  const textures = [];
+  for (const url of urls) {
+    const texture = await loadTexture(url);
+    textures.push(texture);
+  }
+  return textures;
 }
 
 function loadTexture(url) {
@@ -195,7 +224,7 @@ function loadTexture(url) {
       0,
       gl.RGBA,
       gl.UNSIGNED_BYTE,
-      new Uint8Array([255, 0, 255, 255]),
+      new Uint8Array([128, 128, 128, 255]),
     );
 
     const image = new Image();
@@ -217,6 +246,7 @@ function loadTexture(url) {
         gl.TEXTURE_2D,
         gl.TEXTURE_MIN_FILTER,
         gl.LINEAR_MIPMAP_LINEAR,
+        gl.LINEAR,
       );
       //gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
@@ -314,13 +344,16 @@ function main() {
   gl.clearColor(0.9725, 0.8863, 0.5176, 1.0);
   gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 
-  chunkSetBlock(g_testChunk, BlockType.STONE, [0, 1, 0]);
-  chunkSetBlock(g_testChunk, BlockType.DIRT, [1, 1, 0]);
-  chunkSetBlock(g_testChunk, BlockType.WOOD, [2, 1, 0]);
-  chunkSetBlock(g_testChunk, BlockType.DIRT, [0, 2, 0]);
-  chunkFillLayer(g_testChunk, 0, BlockType.STONE);
-  chunkFillLayer(g_testChunk, 1, BlockType.STONE);
-  chunkFillLayer(g_testChunk, 2, BlockType.DIRT);
+  //chunkFillLayer(g_testChunk, 0, BlockType.DIRT);
+  //chunkSetBlock(g_testChunk, BlockType.STONE, [16, 1, 31]);
+  chunkSetBlock(g_testChunk, BlockType.WOOD, [16, 2, 31]);
+  //chunkSetBlock(g_testChunk, BlockType.STONE, [16, 3, 31]);
+  //chunkSetBlock(g_testChunk, BlockType.STONE, [16, 6, 31]);
+
+  vertices = chunkGenerateMesh(g_testChunk);
+  for (let i = 5; i < vertices.length; i += 6) {
+    console.log(vertices[i]);
+  }
 
   requestAnimationFrame(tick);
 }
@@ -336,23 +369,33 @@ function tick() {
   requestAnimationFrame(tick);
 }
 
-function updateRotationMatrix() {
-  var globalRotMat = new Matrix4();
-  globalRotMat.rotate(g_rotation.x, 1, 0, 0);
-  globalRotMat.rotate(g_rotation.y, 0, 1, 0);
-  gl.uniformMatrix4fv(u_GlobalPositionMatrix, false, globalRotMat.elements);
-}
+function updateRotationMatrix() {}
 
 function renderScene() {
   // Clear <canvas>
   gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 
-  vertices = chunkGenerateMesh(g_testChunk);
+  // setup render matrices
+  var globalRotMat = new Matrix4();
+  globalRotMat.rotate(g_rotation.x, 1, 0, 0);
+  globalRotMat.rotate(g_rotation.y, 0, 1, 0);
+  gl.uniformMatrix4fv(u_GlobalPositionMatrix, false, globalRotMat.elements);
 
+  var projMat = new Matrix4();
+  projMat.setPerspective(60, canvas.width / canvas.height, 0.1, 100);
+  gl.uniformMatrix4fv(u_ProjectionMatrix, false, projMat.elements);
+
+  var viewMat = new Matrix4();
+  viewMat.setLookAt(0, 1, 12, 0, 0, 100, 0, 1, 0);
+  gl.uniformMatrix4fv(u_ViewMatrix, false, viewMat.elements);
+
+  //generate chunk mesh
+  vertices = chunkGenerateMesh(g_testChunk);
   //render blocks
 
-  scaleMat = new Matrix4().setScale(0.05, 0.05, 0.05);
-  gl.uniformMatrix4fv(u_ModelMatrix, false, scaleMat.elements);
+  modelMat = new Matrix4();
+  modelMat.translate(-CHUNK_SIZE.x / 2, -2, -CHUNK_SIZE.z / 2);
+  gl.uniformMatrix4fv(u_ModelMatrix, false, modelMat.elements);
   gl.bufferData(gl.ARRAY_BUFFER, vertices, gl.STATIC_DRAW);
   gl.drawArrays(gl.TRIANGLES, 0, vertices.length / 6);
 }

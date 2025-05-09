@@ -1,4 +1,4 @@
-const CHUNK_SIZE = { x: 32, y: 4, z: 32 };
+const CHUNK_SIZE = { x: 32, y: 16, z: 32 };
 
 function newChunk() {
   return new Uint8Array(CHUNK_SIZE.x * CHUNK_SIZE.y * CHUNK_SIZE.z).fill(0);
@@ -40,11 +40,14 @@ function chunkSetBlock(chunk, blockId, coords) {
     throw new TypeError("invalid coords");
   }
 
-  x = coords[0];
-  y = coords[1];
-  z = coords[2];
+  const index = (x, y, z) =>
+    x + CHUNK_SIZE.x * y + CHUNK_SIZE.x * CHUNK_SIZE.y * z;
 
-  chunk[x + CHUNK_SIZE.x * y + CHUNK_SIZE.x * CHUNK_SIZE.y * z] = blockId;
+  let x = coords[0];
+  let y = coords[1];
+  let z = coords[2];
+
+  chunk[index(x, y, z)] = blockId;
 }
 
 function chunkGenerateMesh(chunk) {
