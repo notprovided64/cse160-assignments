@@ -2,6 +2,8 @@ const dirtTexturePath = "./textures/dirt.png";
 const woodTexturePath = "./textures/wood.png";
 const stoneTexturePath = "./textures/stone.png";
 
+const TARGET_FRAME_TIME = 1.0 / 60.0;
+
 // should be in same order as block types
 const texturePaths = [dirtTexturePath, woodTexturePath, stoneTexturePath];
 
@@ -68,8 +70,8 @@ let g_vertices;
 var g_stats;
 
 // timing info
-var g_startTime = performance.now() / 1000;
-var g_seconds = performance.now() / 1000 - g_startTime;
+var g_prevTime = performance.now() / 1000;
+var g_dTime = 0;
 
 // controls
 var g_movementKeys = {
@@ -77,6 +79,8 @@ var g_movementKeys = {
   backward: false,
   left: false,
   right: false,
+  up: false,
+  down: false,
   rotateL: false,
   rotateR: false,
   sprint: false,
@@ -103,7 +107,10 @@ function setupWebGL() {
   canvas = document.getElementById("webgl");
 
   // Get the rendering context for WebGL
-  gl = canvas.getContext("webgl", { preserveDrawingBuffer: false, antialias: true });
+  gl = canvas.getContext("webgl", {
+    preserveDrawingBuffer: false,
+    antialias: true,
+  });
   if (!gl) {
     console.log("Failed to get the rendering context for WebGL");
     return;
@@ -333,47 +340,6 @@ function convertCoordsEvToGL(ev) {
   return [x, y];
 }
 
-function updateMovement(ev) {
-  var forward = new Vector3([-g_viewMat.elements[8], -g_viewMat.elements[9], -g_viewMat.elements[10]]);
-  var right = new Vector3([g_viewMat.elements[0], g_viewMat.elements[1], g_viewMat.elements[2]]);
-
-  forward.normalize();
-  right.normalize();
-
-  var moveSpeed = 0.2;
-
-  if (g_movementKeys.forward) {
-    g_eye[0] -= forward.elements[0] * moveSpeed;
-    //g_eye[1] += forward.elements[1] * moveSpeed;
-    g_eye[2] += forward.elements[2] * moveSpeed;
-  }
-
-  if (g_movementKeys.backward) {
-    g_eye[0] += forward.elements[0] * moveSpeed;
-    //g_eye[1] -= forward.elements[1] * moveSpeed;
-    g_eye[2] -= forward.elements[2] * moveSpeed;
-  }
-
-  if (g_movementKeys.left) {
-    g_eye[0] -= right.elements[0] * moveSpeed;
-    //g_eye[1] -= right.elements[1] * moveSpeed;
-    g_eye[2] += right.elements[2] * moveSpeed;
-  }
-
-  if (g_movementKeys.right) {
-    g_eye[0] += right.elements[0] * moveSpeed;
-    //g_eye[1] += right.elements[1] * moveSpeed;
-    g_eye[2] -= right.elements[2] * moveSpeed;
-  }
-
-  if (g_movementKeys.rotateL) {
-    g_yaw -= moveSpeed * 10;
-  }
-  if (g_movementKeys.rotateR) {
-    g_yaw += moveSpeed * 10;
-  }
-}
-
 function keydown(ev) {
   switch (ev.code) {
     case "KeyW":
@@ -394,8 +360,11 @@ function keydown(ev) {
     case "KeyE":
       g_movementKeys.rotateR = true;
       break;
-    case "KeyShift":
-      g_movementKeys.rotateR = true;
+    case "Space":
+      g_movementKeys.up = true;
+      break;
+    case "ShiftLeft":
+      g_movementKeys.down = true;
       break;
     default:
       break;
@@ -422,8 +391,70 @@ function keyup(ev) {
     case "KeyE":
       g_movementKeys.rotateR = false;
       break;
+    case "Space":
+      g_movementKeys.up = false;
+      break;
+    case "ShiftLeft":
+      g_movementKeys.down = false;
+      break;
     default:
       break;
+  }
+}
+
+function updateMovement(ev) {
+  var forward = new Vector3([
+    -g_viewMat.elements[8],
+    -g_viewMat.elements[9],
+    -g_viewMat.elements[10],
+  ]);
+  var right = new Vector3([
+    g_viewMat.elements[0],
+    g_viewMat.elements[1],
+    g_viewMat.elements[2],
+  ]);
+
+  forward.normalize();
+  right.normalize();
+
+  let moveSpeed = 0.15 * g_dTime;
+  let turnSpeedMod = 20;
+
+  if (g_movementKeys.forward) {
+    g_eye[0] -= forward.elements[0] * moveSpeed;
+    //g_eye[1] += forward.elements[1] * moveSpeed;
+    g_eye[2] += forward.elements[2] * moveSpeed;
+  }
+
+  if (g_movementKeys.backward) {
+    g_eye[0] += forward.elements[0] * moveSpeed;
+    //g_eye[1] -= forward.elements[1] * moveSpeed;
+    g_eye[2] -= forward.elements[2] * moveSpeed;
+  }
+
+  if (g_movementKeys.left) {
+    g_eye[0] -= right.elements[0] * moveSpeed;
+    //g_eye[1] -= right.elements[1] * moveSpeed;
+    g_eye[2] += right.elements[2] * moveSpeed;
+  }
+
+  if (g_movementKeys.right) {
+    g_eye[0] += right.elements[0] * moveSpeed;
+    //g_eye[1] += right.elements[1] * moveSpeed;
+    g_eye[2] -= right.elements[2] * moveSpeed;
+  }
+
+  if (g_movementKeys.rotateL) {
+    g_yaw -= moveSpeed * turnSpeedMod;
+  }
+  if (g_movementKeys.rotateR) {
+    g_yaw += moveSpeed * turnSpeedMod;
+  }
+  if (g_movementKeys.up) {
+    g_eye[1] += moveSpeed;
+  }
+  if (g_movementKeys.down) {
+    g_eye[1] -= moveSpeed;
   }
 }
 
@@ -448,15 +479,42 @@ function main() {
   chunkSetBlock(g_testChunk, BlockType.STONE, [16, 3, 31]);
   chunkSetBlock(g_testChunk, BlockType.STONE, [16, 6, 31]);
 
-
   // pillars  in corners of world
-  chunkSetBlock(g_testChunk, BlockType.STONE, [CHUNK_SIZE.x - 1, 1, CHUNK_SIZE.z - 1]);
-  chunkSetBlock(g_testChunk, BlockType.STONE, [CHUNK_SIZE.x - 1, 2, CHUNK_SIZE.z - 1]);
-  chunkSetBlock(g_testChunk, BlockType.STONE, [CHUNK_SIZE.x - 1, 3, CHUNK_SIZE.z - 1]);
-  chunkSetBlock(g_testChunk, BlockType.STONE, [CHUNK_SIZE.x - 1, 4, CHUNK_SIZE.z - 1]);
-  chunkSetBlock(g_testChunk, BlockType.STONE, [CHUNK_SIZE.x - 1, 5, CHUNK_SIZE.z - 1]);
-  chunkSetBlock(g_testChunk, BlockType.STONE, [CHUNK_SIZE.x - 1, 6, CHUNK_SIZE.z - 1]);
-  chunkSetBlock(g_testChunk, BlockType.STONE, [CHUNK_SIZE.x - 1, 7, CHUNK_SIZE.z - 1]);
+  chunkSetBlock(g_testChunk, BlockType.STONE, [
+    CHUNK_SIZE.x - 1,
+    1,
+    CHUNK_SIZE.z - 1,
+  ]);
+  chunkSetBlock(g_testChunk, BlockType.STONE, [
+    CHUNK_SIZE.x - 1,
+    2,
+    CHUNK_SIZE.z - 1,
+  ]);
+  chunkSetBlock(g_testChunk, BlockType.STONE, [
+    CHUNK_SIZE.x - 1,
+    3,
+    CHUNK_SIZE.z - 1,
+  ]);
+  chunkSetBlock(g_testChunk, BlockType.STONE, [
+    CHUNK_SIZE.x - 1,
+    4,
+    CHUNK_SIZE.z - 1,
+  ]);
+  chunkSetBlock(g_testChunk, BlockType.STONE, [
+    CHUNK_SIZE.x - 1,
+    5,
+    CHUNK_SIZE.z - 1,
+  ]);
+  chunkSetBlock(g_testChunk, BlockType.STONE, [
+    CHUNK_SIZE.x - 1,
+    6,
+    CHUNK_SIZE.z - 1,
+  ]);
+  chunkSetBlock(g_testChunk, BlockType.STONE, [
+    CHUNK_SIZE.x - 1,
+    7,
+    CHUNK_SIZE.z - 1,
+  ]);
 
   chunkSetBlock(g_testChunk, BlockType.STONE, [0, 1, CHUNK_SIZE.z - 1]);
   chunkSetBlock(g_testChunk, BlockType.STONE, [0, 2, CHUNK_SIZE.z - 1]);
@@ -497,7 +555,11 @@ function main() {
 }
 
 function tick() {
-  g_seconds = performance.now() / 1000 - g_startTime;
+  let currentTime = performance.now() / 1000;
+  let rawDTime = currentTime - g_prevTime;
+  g_prevTime = currentTime;
+  g_dTime = rawDTime / TARGET_FRAME_TIME;
+
   g_stats.begin();
 
   updateMovement();
@@ -517,7 +579,7 @@ function updateRotationMatrix() {
   const front = [
     Math.cos(radPitch) * Math.cos(radYaw),
     Math.sin(radPitch),
-    Math.cos(radPitch) * Math.sin(radYaw)
+    Math.cos(radPitch) * Math.sin(radYaw),
   ];
 
   const length = Math.hypot(front[0], front[1], front[2]);
@@ -525,18 +587,24 @@ function updateRotationMatrix() {
   front[1] /= length;
   front[2] /= length;
 
-  g_at = [
-    g_eye[0] + front[0],
-    g_eye[1] + front[1],
-    g_eye[2] + front[2]
-  ];
+  g_at = [g_eye[0] + front[0], g_eye[1] + front[1], g_eye[2] + front[2]];
 }
 
 function renderScene() {
   // Clear <canvas>
   gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 
-  g_viewMat.setLookAt(g_eye[0], g_eye[1], g_eye[2], g_at[0], g_at[1], g_at[2],g_up[0], g_up[1], g_up[2]);
+  g_viewMat.setLookAt(
+    g_eye[0],
+    g_eye[1],
+    g_eye[2],
+    g_at[0],
+    g_at[1],
+    g_at[2],
+    g_up[0],
+    g_up[1],
+    g_up[2],
+  );
   gl.uniformMatrix4fv(u_ViewMatrix, false, g_viewMat.elements);
 
   gl.bufferData(gl.ARRAY_BUFFER, g_vertices, gl.STATIC_DRAW);
