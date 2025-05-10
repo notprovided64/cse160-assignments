@@ -5,7 +5,7 @@ const stoneTexturePath = "./textures/stone.png";
 // should be in same order as block types
 const texturePaths = [dirtTexturePath, woodTexturePath, stoneTexturePath];
 
-var VSHADER_SOURCE = `
+let VSHADER_SOURCE = `
 uniform mat4 u_GlobalPositionMatrix;
 uniform mat4 u_ModelMatrix;
 uniform mat4 u_ViewMatrix;
@@ -13,49 +13,35 @@ uniform mat4 u_ProjectionMatrix;
 
 attribute vec4 a_Position;
 attribute vec2 a_UV;
-attribute float a_TexIndex;
+attribute vec3 a_TexWeights;
 
 varying vec2 v_UV;
-varying float v_TexIndex;
+varying vec3 v_TexWeights;
 
 void main() {
   gl_Position = u_ProjectionMatrix * u_ViewMatrix * u_GlobalPositionMatrix * u_ModelMatrix * a_Position;
   v_UV = a_UV;
-  v_TexIndex = a_TexIndex;
+  v_TexWeights = a_TexWeights;
 }
 `;
 
 // Fragment shader program
-var FSHADER_SOURCE = `
+let FSHADER_SOURCE = `
 precision mediump float;
 
-uniform sampler2D u_Textures[8];
+uniform sampler2D u_Textures[3];
 
 varying vec2 v_UV;
-varying float v_TexIndex;
+varying vec3 v_TexWeights;
 
 void main() {
-  int index = int(v_TexIndex);
-  vec4 color;
+  vec4 color0 = texture2D(u_Textures[0], v_UV);
+  vec4 color1 = texture2D(u_Textures[1], v_UV);
+  vec4 color2 = texture2D(u_Textures[2], v_UV);
 
-  //color = texture2D(u_Textures[index], v_UV);
-  if (index == 0) {
-      color = texture2D(u_Textures[0], v_UV);
-  } else if (index == 1) {
-      color = texture2D(u_Textures[1], v_UV);
-  } else if (index == 2) {
-      color = texture2D(u_Textures[2], v_UV);
-  } else if (index == 3) {
-      color = texture2D(u_Textures[3], v_UV);
-  } else if (index == 4) {
-      color = texture2D(u_Textures[4], v_UV);
-  } else if (index == 5) {
-      color = texture2D(u_Textures[5], v_UV);
-  } else if (index == 6) {
-      color = texture2D(u_Textures[6], v_UV);
-  } else {
-      color = texture2D(u_Textures[7], v_UV);
-  }
+  vec4 color = color0 * v_TexWeights[0] +
+               color1 * v_TexWeights[1] +
+               color2 * v_TexWeights[2];
 
   gl_FragColor = color;
 }
@@ -68,7 +54,7 @@ let gl;
 // webgl variables
 let a_Position;
 let a_UV;
-let a_TexIndex;
+let a_TexWeights;
 let u_ModelMatrix;
 let u_GlobalPositionMatrix;
 let u_Textures;
@@ -76,6 +62,7 @@ let u_ViewMatrix;
 let u_ProjectionMatrix;
 
 let g_Vbo;
+let g_vertices;
 
 //performance
 var g_stats;
@@ -85,10 +72,28 @@ var g_startTime = performance.now() / 1000;
 var g_seconds = performance.now() / 1000 - g_startTime;
 
 // controls
+var g_movementKeys = {
+  forward: false,
+  backward: false,
+  left: false,
+  right: false,
+  rotateL: false,
+  rotateR: false,
+  sprint: false,
+};
+
 let g_isDragging = false;
 let g_previousMousePosition = { x: 0, y: 0 };
-let g_rotation = { x: 0, y: 0 };
-let g_position = { x: 0.0, y: 0.0 };
+
+let g_yaw = 90;
+let g_pitch = 0;
+
+var g_eye = [0, 0, 3];
+var g_at = [0, 0, -100];
+var g_up = [0, 1, 0];
+
+let g_viewMat = new Matrix4();
+let g_modelMat = new Matrix4();
 
 //block data
 let g_testChunk = newChunk();
@@ -98,7 +103,7 @@ function setupWebGL() {
   canvas = document.getElementById("webgl");
 
   // Get the rendering context for WebGL
-  gl = canvas.getContext("webgl", { preserveDrawingBuffer: true });
+  gl = canvas.getContext("webgl", { preserveDrawingBuffer: false, antialias: true });
   if (!gl) {
     console.log("Failed to get the rendering context for WebGL");
     return;
@@ -125,14 +130,14 @@ function setupWebGL() {
   // setup vertex data mapping
   gl.enableVertexAttribArray(a_Position);
   gl.enableVertexAttribArray(a_UV);
-  gl.enableVertexAttribArray(a_TexIndex);
+  gl.enableVertexAttribArray(a_TexWeights);
 
   const elem = Float32Array.BYTES_PER_ELEMENT;
-  const stride = 6 * elem;
+  const stride = 8 * elem;
 
   gl.vertexAttribPointer(a_Position, 3, gl.FLOAT, false, stride, 0);
   gl.vertexAttribPointer(a_UV, 2, gl.FLOAT, false, stride, 3 * elem);
-  gl.vertexAttribPointer(a_TexIndex, 1, gl.FLOAT, false, stride, 5 * elem);
+  gl.vertexAttribPointer(a_TexWeights, 3, gl.FLOAT, false, stride, 5 * elem);
 }
 
 function connectVariablesToGLSL() {
@@ -154,9 +159,9 @@ function connectVariablesToGLSL() {
     return;
   }
 
-  a_TexIndex = gl.getAttribLocation(gl.program, "a_TexIndex");
-  if (a_TexIndex < 0) {
-    console.log("Failed to get the storage location of a_TexIndex");
+  a_TexWeights = gl.getAttribLocation(gl.program, "a_TexWeights");
+  if (a_TexWeights < 0) {
+    console.log("Failed to get the storage location of a_TexWeights");
     return;
   }
 
@@ -245,7 +250,7 @@ function loadTexture(url) {
       gl.texParameteri(
         gl.TEXTURE_2D,
         gl.TEXTURE_MIN_FILTER,
-        gl.LINEAR_MIPMAP_LINEAR,
+        gl.NEAREST_MIPMAP_LINEAR,
         gl.LINEAR,
       );
       //gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
@@ -281,16 +286,12 @@ function setupUI() {
 
     const sensitivity = 0.5;
 
-    g_rotation.y += deltaX * sensitivity;
-    g_rotation.x += deltaY * sensitivity;
+    g_yaw += deltaX * sensitivity;
+    g_pitch -= deltaY * sensitivity;
 
-    //in radians, probably should fix this
-    const maxRotationX = 90; // degrees
-    const minRotationX = -90;
-    g_rotation.x = Math.max(minRotationX, Math.min(maxRotationX, g_rotation.x));
+    g_pitch = Math.max(-89, Math.min(89, g_pitch));
 
     g_previousMousePosition = { x: e.clientX, y: e.clientY };
-
     console.log("yraaaaaaa");
   });
 
@@ -313,9 +314,9 @@ function setupUI() {
   window.addEventListener("resize", resizeCanvas, false);
 
   function resizeCanvas() {
-    size = Math.min(window.innerWidth, window.innerHeight);
-    canvas.width = size;
-    canvas.height = size;
+    //size = Math.min(window.innerWidth, window.innerHeight);
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
   }
 
   resizeCanvas();
@@ -332,9 +333,106 @@ function convertCoordsEvToGL(ev) {
   return [x, y];
 }
 
+function updateMovement(ev) {
+  var forward = new Vector3([-g_viewMat.elements[8], -g_viewMat.elements[9], -g_viewMat.elements[10]]);
+  var right = new Vector3([g_viewMat.elements[0], g_viewMat.elements[1], g_viewMat.elements[2]]);
+
+  forward.normalize();
+  right.normalize();
+
+  var moveSpeed = 0.2;
+
+  if (g_movementKeys.forward) {
+    g_eye[0] -= forward.elements[0] * moveSpeed;
+    //g_eye[1] += forward.elements[1] * moveSpeed;
+    g_eye[2] += forward.elements[2] * moveSpeed;
+  }
+
+  if (g_movementKeys.backward) {
+    g_eye[0] += forward.elements[0] * moveSpeed;
+    //g_eye[1] -= forward.elements[1] * moveSpeed;
+    g_eye[2] -= forward.elements[2] * moveSpeed;
+  }
+
+  if (g_movementKeys.left) {
+    g_eye[0] -= right.elements[0] * moveSpeed;
+    //g_eye[1] -= right.elements[1] * moveSpeed;
+    g_eye[2] += right.elements[2] * moveSpeed;
+  }
+
+  if (g_movementKeys.right) {
+    g_eye[0] += right.elements[0] * moveSpeed;
+    //g_eye[1] += right.elements[1] * moveSpeed;
+    g_eye[2] -= right.elements[2] * moveSpeed;
+  }
+
+  if (g_movementKeys.rotateL) {
+    g_yaw -= moveSpeed * 10;
+  }
+  if (g_movementKeys.rotateR) {
+    g_yaw += moveSpeed * 10;
+  }
+}
+
+function keydown(ev) {
+  switch (ev.code) {
+    case "KeyW":
+      g_movementKeys.forward = true;
+      break;
+    case "KeyS":
+      g_movementKeys.backward = true;
+      break;
+    case "KeyA":
+      g_movementKeys.left = true;
+      break;
+    case "KeyD":
+      g_movementKeys.right = true;
+      break;
+    case "KeyQ":
+      g_movementKeys.rotateL = true;
+      break;
+    case "KeyE":
+      g_movementKeys.rotateR = true;
+      break;
+    case "KeyShift":
+      g_movementKeys.rotateR = true;
+      break;
+    default:
+      break;
+  }
+}
+
+function keyup(ev) {
+  switch (ev.code) {
+    case "KeyW":
+      g_movementKeys.forward = false;
+      break;
+    case "KeyS":
+      g_movementKeys.backward = false;
+      break;
+    case "KeyA":
+      g_movementKeys.left = false;
+      break;
+    case "KeyD":
+      g_movementKeys.right = false;
+      break;
+    case "KeyQ":
+      g_movementKeys.rotateL = false;
+      break;
+    case "KeyE":
+      g_movementKeys.rotateR = false;
+      break;
+    default:
+      break;
+  }
+}
+
 function main() {
   setupUI();
   setupWebGL();
+
+  document.onkeydown = keydown;
+  document.onkeyup = keyup;
 
   console.log(
     gl.getParameter(gl.MAX_COMBINED_TEXTURE_IMAGE_UNITS) +
@@ -344,16 +442,56 @@ function main() {
   gl.clearColor(0.9725, 0.8863, 0.5176, 1.0);
   gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 
-  //chunkFillLayer(g_testChunk, 0, BlockType.DIRT);
-  //chunkSetBlock(g_testChunk, BlockType.STONE, [16, 1, 31]);
+  chunkFillLayer(g_testChunk, 0, BlockType.DIRT);
+  chunkSetBlock(g_testChunk, BlockType.STONE, [16, 1, 31]);
   chunkSetBlock(g_testChunk, BlockType.WOOD, [16, 2, 31]);
-  //chunkSetBlock(g_testChunk, BlockType.STONE, [16, 3, 31]);
-  //chunkSetBlock(g_testChunk, BlockType.STONE, [16, 6, 31]);
+  chunkSetBlock(g_testChunk, BlockType.STONE, [16, 3, 31]);
+  chunkSetBlock(g_testChunk, BlockType.STONE, [16, 6, 31]);
 
-  vertices = chunkGenerateMesh(g_testChunk);
-  for (let i = 5; i < vertices.length; i += 6) {
-    console.log(vertices[i]);
-  }
+
+  // pillars  in corners of world
+  chunkSetBlock(g_testChunk, BlockType.STONE, [CHUNK_SIZE.x - 1, 1, CHUNK_SIZE.z - 1]);
+  chunkSetBlock(g_testChunk, BlockType.STONE, [CHUNK_SIZE.x - 1, 2, CHUNK_SIZE.z - 1]);
+  chunkSetBlock(g_testChunk, BlockType.STONE, [CHUNK_SIZE.x - 1, 3, CHUNK_SIZE.z - 1]);
+  chunkSetBlock(g_testChunk, BlockType.STONE, [CHUNK_SIZE.x - 1, 4, CHUNK_SIZE.z - 1]);
+  chunkSetBlock(g_testChunk, BlockType.STONE, [CHUNK_SIZE.x - 1, 5, CHUNK_SIZE.z - 1]);
+  chunkSetBlock(g_testChunk, BlockType.STONE, [CHUNK_SIZE.x - 1, 6, CHUNK_SIZE.z - 1]);
+  chunkSetBlock(g_testChunk, BlockType.STONE, [CHUNK_SIZE.x - 1, 7, CHUNK_SIZE.z - 1]);
+
+  chunkSetBlock(g_testChunk, BlockType.STONE, [0, 1, CHUNK_SIZE.z - 1]);
+  chunkSetBlock(g_testChunk, BlockType.STONE, [0, 2, CHUNK_SIZE.z - 1]);
+  chunkSetBlock(g_testChunk, BlockType.STONE, [0, 3, CHUNK_SIZE.z - 1]);
+  chunkSetBlock(g_testChunk, BlockType.STONE, [0, 4, CHUNK_SIZE.z - 1]);
+  chunkSetBlock(g_testChunk, BlockType.STONE, [0, 5, CHUNK_SIZE.z - 1]);
+  chunkSetBlock(g_testChunk, BlockType.STONE, [0, 6, CHUNK_SIZE.z - 1]);
+  chunkSetBlock(g_testChunk, BlockType.STONE, [0, 7, CHUNK_SIZE.z - 1]);
+  chunkSetBlock(g_testChunk, BlockType.STONE, [0, 1, CHUNK_SIZE.z - 1]);
+
+  chunkSetBlock(g_testChunk, BlockType.STONE, [0, 1, 0]);
+  chunkSetBlock(g_testChunk, BlockType.STONE, [0, 2, 0]);
+  chunkSetBlock(g_testChunk, BlockType.STONE, [0, 3, 0]);
+  chunkSetBlock(g_testChunk, BlockType.STONE, [0, 4, 0]);
+  chunkSetBlock(g_testChunk, BlockType.STONE, [0, 5, 0]);
+  chunkSetBlock(g_testChunk, BlockType.STONE, [0, 6, 0]);
+  chunkSetBlock(g_testChunk, BlockType.STONE, [0, 7, 0]);
+
+  chunkSetBlock(g_testChunk, BlockType.STONE, [CHUNK_SIZE.x - 1, 1, 0]);
+  chunkSetBlock(g_testChunk, BlockType.STONE, [CHUNK_SIZE.x - 1, 2, 0]);
+  chunkSetBlock(g_testChunk, BlockType.STONE, [CHUNK_SIZE.x - 1, 3, 0]);
+  chunkSetBlock(g_testChunk, BlockType.STONE, [CHUNK_SIZE.x - 1, 4, 0]);
+  chunkSetBlock(g_testChunk, BlockType.STONE, [CHUNK_SIZE.x - 1, 5, 0]);
+  chunkSetBlock(g_testChunk, BlockType.STONE, [CHUNK_SIZE.x - 1, 6, 0]);
+  chunkSetBlock(g_testChunk, BlockType.STONE, [CHUNK_SIZE.x - 1, 7, 0]);
+
+  g_vertices = chunkGenerateMesh(g_testChunk);
+
+  //setup projection matrix
+  var projMat = new Matrix4();
+  projMat.setPerspective(60, canvas.width / canvas.height, 0.1, 100);
+  gl.uniformMatrix4fv(u_ProjectionMatrix, false, projMat.elements);
+
+  g_modelMat.translate(-CHUNK_SIZE.x / 2, -2, -CHUNK_SIZE.z / 2);
+  gl.uniformMatrix4fv(u_ModelMatrix, false, g_modelMat.elements);
 
   requestAnimationFrame(tick);
 }
@@ -362,6 +500,7 @@ function tick() {
   g_seconds = performance.now() / 1000 - g_startTime;
   g_stats.begin();
 
+  updateMovement();
   updateRotationMatrix();
   renderScene();
 
@@ -369,33 +508,37 @@ function tick() {
   requestAnimationFrame(tick);
 }
 
-function updateRotationMatrix() {}
+function updateRotationMatrix() {
+  //didn't put g_eye/at/up into Vector3s...
+  // this is probably prett yslow
+  const radYaw = (Math.PI / 180) * g_yaw;
+  const radPitch = (Math.PI / 180) * g_pitch;
+
+  const front = [
+    Math.cos(radPitch) * Math.cos(radYaw),
+    Math.sin(radPitch),
+    Math.cos(radPitch) * Math.sin(radYaw)
+  ];
+
+  const length = Math.hypot(front[0], front[1], front[2]);
+  front[0] /= length;
+  front[1] /= length;
+  front[2] /= length;
+
+  g_at = [
+    g_eye[0] + front[0],
+    g_eye[1] + front[1],
+    g_eye[2] + front[2]
+  ];
+}
 
 function renderScene() {
   // Clear <canvas>
   gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 
-  // setup render matrices
-  var globalRotMat = new Matrix4();
-  globalRotMat.rotate(g_rotation.x, 1, 0, 0);
-  globalRotMat.rotate(g_rotation.y, 0, 1, 0);
-  gl.uniformMatrix4fv(u_GlobalPositionMatrix, false, globalRotMat.elements);
+  g_viewMat.setLookAt(g_eye[0], g_eye[1], g_eye[2], g_at[0], g_at[1], g_at[2],g_up[0], g_up[1], g_up[2]);
+  gl.uniformMatrix4fv(u_ViewMatrix, false, g_viewMat.elements);
 
-  var projMat = new Matrix4();
-  projMat.setPerspective(60, canvas.width / canvas.height, 0.1, 100);
-  gl.uniformMatrix4fv(u_ProjectionMatrix, false, projMat.elements);
-
-  var viewMat = new Matrix4();
-  viewMat.setLookAt(0, 1, 12, 0, 0, 100, 0, 1, 0);
-  gl.uniformMatrix4fv(u_ViewMatrix, false, viewMat.elements);
-
-  //generate chunk mesh
-  vertices = chunkGenerateMesh(g_testChunk);
-  //render blocks
-
-  modelMat = new Matrix4();
-  modelMat.translate(-CHUNK_SIZE.x / 2, -2, -CHUNK_SIZE.z / 2);
-  gl.uniformMatrix4fv(u_ModelMatrix, false, modelMat.elements);
-  gl.bufferData(gl.ARRAY_BUFFER, vertices, gl.STATIC_DRAW);
-  gl.drawArrays(gl.TRIANGLES, 0, vertices.length / 6);
+  gl.bufferData(gl.ARRAY_BUFFER, g_vertices, gl.STATIC_DRAW);
+  gl.drawArrays(gl.TRIANGLES, 0, g_vertices.length / 8);
 }

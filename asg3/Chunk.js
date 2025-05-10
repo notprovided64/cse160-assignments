@@ -1,4 +1,4 @@
-const CHUNK_SIZE = { x: 32, y: 16, z: 32 };
+const CHUNK_SIZE = { x: 16, y: 16, z: 16 };
 
 function newChunk() {
   return new Uint8Array(CHUNK_SIZE.x * CHUNK_SIZE.y * CHUNK_SIZE.z).fill(0);
@@ -77,13 +77,12 @@ function chunkGenerateMesh(chunk) {
       y >= CHUNK_SIZE.y ||
       z >= CHUNK_SIZE.z
     )
-      return false; // TODO change to true when we have a bigger chunk size working
+      return true;
 
-    return chunkData[index(x, y, z)] === BlockType.AIR;
+    return chunk[index(x, y, z)] === BlockType.AIR;
   };
 
   const vertices = [];
-
   for (let z = 0; z < CHUNK_SIZE.z; z++) {
     for (let y = 0; y < CHUNK_SIZE.y; y++) {
       for (let x = 0; x < CHUNK_SIZE.x; x++) {
@@ -95,18 +94,24 @@ function chunkGenerateMesh(chunk) {
         for (const [face, faceVertices] of Object.entries(BLOCK_GEOMETRY)) {
           const [dx, dy, dz] = faceNormals[face];
 
-          // TODO change later so we don't render unnecessary blocks
-          //const nx = x + dx, ny = y +dy, nz = z + dz;
-          //if (outOfBounds(chunk, nx, ny, nz))) {
-          //continue;
-          //} else if (chunkData[index(x, y, z)] !== BlockType.AIR){
-          //  //continue;
-          //}
+          const nx = x + dx, ny = y +dy, nz = z + dz;
+          if (!isAir(nx,ny,nz)){
+            continue;
+          }
+
+          let texW0 = 0, texW1 = 0, texW2 = 0;
+          if (blockId === BlockType.DIRT) {
+            texW0 = 1;
+          } else if (blockId === BlockType.WOOD) {
+            texW1 = 1;
+          } else if (blockId === BlockType.STONE) {
+            texW2 = 1;
+          }
 
           // adding face vertices and uv map to
           for (const [vx, vy, vz, u, v] of faceVertices) {
             // layer given through blockId - 1, starts at Wood, goes to stone and so on
-            vertices.push(vx + x, vy + y, vz + z, u, v, blockId - 1);
+            vertices.push(vx + x, vy + y, vz + z, u, v, texW0, texW1, texW2);
           }
         }
       }
