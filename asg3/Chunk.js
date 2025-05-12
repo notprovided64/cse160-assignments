@@ -1,4 +1,4 @@
-const CHUNK_SIZE = { x: 16, y: 16, z: 16 };
+const CHUNK_SIZE = { x: 64, y: 64, z: 64 };
 
 function newChunk() {
   return new Uint8Array(CHUNK_SIZE.x * CHUNK_SIZE.y * CHUNK_SIZE.z).fill(0);
@@ -9,6 +9,29 @@ function isValidChunk(chunk) {
     chunk instanceof Uint8Array &&
     chunk.length == CHUNK_SIZE.x * CHUNK_SIZE.y * CHUNK_SIZE.z
   );
+}
+
+function getBlockIndex(x, y, z) {
+  return x + CHUNK_SIZE.x * y + CHUNK_SIZE.x * CHUNK_SIZE.y * z;
+}
+
+function chunkGetBlock(chunk, [x, y, z]) {
+  if (
+    x < 0 ||
+    x >= CHUNK_SIZE.x ||
+    y < 0 ||
+    y >= CHUNK_SIZE.y ||
+    z < 0 ||
+    z >= CHUNK_SIZE.z
+  ) {
+    return BlockType.AIR; // we lazy
+  }
+  return chunk[getBlockIndex(x, y, z)];
+}
+
+function chunkIsSolidBlock(chunk, [x, y, z]) {
+  const block = chunkGetBlock(chunk, [x, y, z]);
+  return block !== BlockType.AIR;
 }
 
 function chunkFillLayer(chunk, yIndex, blockId) {
@@ -68,6 +91,8 @@ function chunkGenerateMesh(chunk) {
     bottom: [0, -1, 0],
   };
 
+  // gonna keep this separate from chunkIsSolidBlock
+  // since air blocks are basically the absence of a block
   const isAir = (x, y, z) => {
     if (
       x < 0 ||
@@ -94,12 +119,16 @@ function chunkGenerateMesh(chunk) {
         for (const [face, faceVertices] of Object.entries(BLOCK_GEOMETRY)) {
           const [dx, dy, dz] = faceNormals[face];
 
-          const nx = x + dx, ny = y +dy, nz = z + dz;
-          if (!isAir(nx,ny,nz)){
+          const nx = x + dx,
+            ny = y + dy,
+            nz = z + dz;
+          if (!isAir(nx, ny, nz)) {
             continue;
           }
 
-          let texW0 = 0, texW1 = 0, texW2 = 0;
+          let texW0 = 0,
+            texW1 = 0,
+            texW2 = 0;
           if (blockId === BlockType.DIRT) {
             texW0 = 1;
           } else if (blockId === BlockType.WOOD) {

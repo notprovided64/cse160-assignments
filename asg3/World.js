@@ -4,6 +4,17 @@ const stoneTexturePath = "./textures/stone.png";
 
 const TARGET_FRAME_TIME = 1.0 / 60.0;
 
+const PLAYER_WIDTH = 0.5;
+const PLAYER_HALF_WIDTH = PLAYER_WIDTH / 2;
+const PLAYER_HEIGHT = 1.8;
+const PLAYER_EYE_TO_HEAD = 0.2;
+const PLAYER_EYE_TO_GROUND = PLAYER_HEIGHT - PLAYER_EYE_TO_HEAD;
+
+const TERMINAL_VELOCITY = -0.25;
+
+const GRAVITY = -0.02;
+const JUMP_STRENGTH = 0.5; // how strong the jump is
+
 // should be in same order as block types
 const texturePaths = [dirtTexturePath, woodTexturePath, stoneTexturePath];
 
@@ -32,6 +43,8 @@ let FSHADER_SOURCE = `
 precision mediump float;
 
 uniform sampler2D u_Textures[3];
+uniform vec4 u_Color;
+uniform float u_ColorWeight;
 
 varying vec2 v_UV;
 varying vec3 v_TexWeights;
@@ -45,6 +58,8 @@ void main() {
                color1 * v_TexWeights[1] +
                color2 * v_TexWeights[2];
 
+  color = mix(color, u_Color, u_ColorWeight);
+
   gl_FragColor = color;
 }
 `;
@@ -52,6 +67,7 @@ void main() {
 // gl context
 let canvas;
 let gl;
+let vaoExt;
 
 // webgl variables
 let a_Position;
@@ -63,6 +79,7 @@ let u_Textures;
 let u_ViewMatrix;
 let u_ProjectionMatrix;
 
+let g_Vao;
 let g_Vbo;
 let g_vertices;
 
@@ -86,13 +103,18 @@ var g_movementKeys = {
   sprint: false,
 };
 
-let g_isDragging = false;
-let g_previousMousePosition = { x: 0, y: 0 };
+let g_selectedBlock = BlockType.DIRT;
+let g_grounded = false;
+let g_yvel = 0;
+
+let g_pointerLocked = false;
+//let g_isDragging = false;
+//let g_previousMousePosition = { x: 0, y: 0 };
 
 let g_yaw = 90;
 let g_pitch = 0;
 
-var g_eye = [0, 0, 3];
+var g_eye = [0, 0, 5];
 var g_at = [0, 0, -100];
 var g_up = [0, 1, 0];
 
@@ -100,7 +122,7 @@ let g_viewMat = new Matrix4();
 let g_modelMat = new Matrix4();
 
 //block data
-let g_testChunk = newChunk();
+let g_testChunk = new Uint8Array();
 
 function setupWebGL() {
   // Retrieve <canvas> element
@@ -116,6 +138,11 @@ function setupWebGL() {
     return;
   }
 
+  vaoExt = gl.getExtension("OES_vertex_array_object");
+  if (!vaoExt) {
+    console.log("VAO not supported!");
+  }
+
   gl.enable(gl.DEPTH_TEST);
   connectVariablesToGLSL();
 
@@ -125,11 +152,16 @@ function setupWebGL() {
       gl.bindTexture(gl.TEXTURE_2D, tex);
     });
 
+    //realistically this code needs to be ran again if we ever try and render something else
+
     gl.uniform1iv(
       u_Textures,
       textures.map((_, i) => i),
     );
   });
+
+  g_Vao = vaoExt.createVertexArrayOES();
+  vaoExt.bindVertexArrayOES(g_Vao);
 
   g_Vbo = gl.createBuffer();
   gl.bindBuffer(gl.ARRAY_BUFFER, g_Vbo);
@@ -145,6 +177,8 @@ function setupWebGL() {
   gl.vertexAttribPointer(a_Position, 3, gl.FLOAT, false, stride, 0);
   gl.vertexAttribPointer(a_UV, 2, gl.FLOAT, false, stride, 3 * elem);
   gl.vertexAttribPointer(a_TexWeights, 3, gl.FLOAT, false, stride, 5 * elem);
+
+  vaoExt.bindVertexArrayOES(null);
 }
 
 function connectVariablesToGLSL() {
@@ -203,6 +237,18 @@ function connectVariablesToGLSL() {
     return;
   }
 
+  u_ColorWeight = gl.getUniformLocation(gl.program, "u_ColorWeight");
+  if (!u_ColorWeight) {
+    console.log("Failed to get the storage location of u_cwieght");
+    return;
+  }
+
+  u_Color = gl.getUniformLocation(gl.program, "u_Color");
+  if (!u_Color) {
+    console.log("Failed to get the storage location of u_colloh");
+    return;
+  }
+
   var iden = new Matrix4();
   gl.uniformMatrix4fv(u_GlobalPositionMatrix, false, iden.elements);
   gl.uniformMatrix4fv(u_ModelMatrix, false, iden.elements);
@@ -210,6 +256,58 @@ function connectVariablesToGLSL() {
 
 function loadTextures(urls) {
   return Promise.all(urls.map((url) => loadTexture(url)));
+}
+
+function saveWorld() {
+  const defaultName = "world.wld";
+  const filename = prompt("Enter filename:", defaultName);
+  if (!filename) return;
+
+  const blob = new Blob([g_testChunk], { type: "application/octet-stream" });
+  const url = URL.createObjectURL(blob);
+
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename.endsWith(".wld") ? filename : `${filename}.wld`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function loadWorld() {
+  const input = document.createElement("input");
+  input.type = "file";
+  input.accept = ".wld";
+  input.onchange = () => {
+    const file = input.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      const arrayBuffer = reader.result;
+      g_testChunk = new Uint8Array(arrayBuffer);
+      updateChunkMesh();
+      console.log("Loaded world:", g_testChunk);
+      g_eye = [CHUNK_SIZE.x / 2, 3, CHUNK_SIZE.z / 2];
+    };
+    reader.readAsArrayBuffer(file);
+  };
+  input.click();
+}
+
+async function loadDefaultWorld() {
+  try {
+    const response = await fetch("default.wld");
+    if (!response.ok) throw new Error("Failed to load world file");
+
+    const arrayBuffer = await response.arrayBuffer();
+    g_testChunk = new Uint8Array(arrayBuffer);
+    g_vertices = chunkGenerateMesh(g_testChunk);
+    updateChunkMesh();
+    console.log("Loaded world:", g_testChunk);
+    g_eye = [CHUNK_SIZE.x / 2, 3, CHUNK_SIZE.z / 2];
+  } catch (err) {
+    console.error("Error loading world:", err);
+  }
 }
 
 async function loadTexturesSeq(urls) {
@@ -279,43 +377,86 @@ function setupUI() {
   document.body.appendChild(g_stats.dom);
 
   let canvas = document.getElementById("webgl");
-  canvas.addEventListener("mousedown", (e) => {
-    g_isDragging = true;
-    g_previousMousePosition = { x: e.clientX, y: e.clientY };
-    console.log("stardrag");
+  //canvas.addEventListener("mousedown", (e) => {
+  //
+  //  g_isDragging = true;
+  //  g_previousMousePosition = { x: e.clientX, y: e.clientY };
+  //  console.log("stardrag");
+  //});
+  //
+
+  //canvas.addEventListener("mousemove", (e) => {
+  //  if (!g_isDragging) return;
+  //
+  //  const deltaX = e.clientX - g_previousMousePosition.x;
+  //  const deltaY = e.clientY - g_previousMousePosition.y;
+  //
+  //  const sensitivity = 0.5;
+  //
+  //  g_yaw += deltaX * sensitivity;
+  //  g_pitch -= deltaY * sensitivity;
+  //
+  //  g_pitch = Math.max(-89, Math.min(89, g_pitch));
+  //
+  //  g_previousMousePosition = { x: e.clientX, y: e.clientY };
+  //  console.log("yraaaaaaa");
+  //});
+  //
+  //canvas.addEventListener("mouseup", (e) => {
+  //  g_isDragging = false;
+  //  console.log("enduh");
+  //});
+  //
+  //canvas.addEventListener("mouseleave", (e) => {
+  //  g_isDragging = false;
+  //});
+
+  canvas.addEventListener("mousedown", (event) => {
+    if (event.button == 0) {
+      if (!g_pointerLocked) {
+        canvas.requestPointerLock();
+      } else {
+        const hit = getLookAtBlock();
+        console.log(hit);
+        if (hit) {
+          chunkSetBlock(g_testChunk, BlockType.AIR, hit);
+          g_vertices = chunkGenerateMesh(g_testChunk);
+          updateChunkMesh();
+        }
+      }
+    } else if (event.button == 2) {
+      console.log("wiclick.");
+      const hit = getLookAtBlocMinusOne();
+      console.log(hit);
+      if (hit) {
+        chunkSetBlock(g_testChunk, g_selectedBlock, hit);
+        g_vertices = chunkGenerateMesh(g_testChunk);
+        updateChunkMesh();
+      }
+    }
   });
 
-  canvas.addEventListener("mousemove", (e) => {
-    if (!g_isDragging) return;
+  document.addEventListener("pointerlockchange", () => {
+    if (document.pointerLockElement === canvas) {
+      console.log("Pointer locked");
+      g_pointerLocked = true;
+      document.addEventListener("mousemove", onMouseMove, false);
+    } else {
+      console.log("Pointer unlocked");
+      g_pointerLocked = false;
+      document.removeEventListener("mousemove", onMouseMove, false);
+    }
+  });
 
-    const deltaX = e.clientX - g_previousMousePosition.x;
-    const deltaY = e.clientY - g_previousMousePosition.y;
-
-    const sensitivity = 0.5;
-
-    g_yaw += deltaX * sensitivity;
-    g_pitch -= deltaY * sensitivity;
+  function onMouseMove(e) {
+    const sensitivity = 0.1;
+    g_yaw += e.movementX * sensitivity;
+    g_pitch -= e.movementY * sensitivity;
 
     g_pitch = Math.max(-89, Math.min(89, g_pitch));
 
-    g_previousMousePosition = { x: e.clientX, y: e.clientY };
-    console.log("yraaaaaaa");
-  });
-
-  canvas.addEventListener("mouseup", (e) => {
-    g_isDragging = false;
-    console.log("enduh");
-  });
-
-  canvas.addEventListener("mouseleave", (e) => {
-    g_isDragging = false;
-  });
-
-  canvas.addEventListener("click", (event) => {
-    if (event.shiftKey) {
-      console.log("Shift+Click detected on canvas!");
-    }
-  });
+    //updateRotationMatrix();
+  }
 
   // resize the canvas to fill browser window dynamically
   window.addEventListener("resize", resizeCanvas, false);
@@ -324,9 +465,16 @@ function setupUI() {
     //size = Math.min(window.innerWidth, window.innerHeight);
     canvas.width = window.innerWidth;
     canvas.height = window.innerHeight;
+    gl.viewport(0, 0, canvas.width, canvas.height);
+    var projMat = new Matrix4();
+    projMat.setPerspective(60, canvas.width / canvas.height, 0.1, 100);
+    gl.uniformMatrix4fv(u_ProjectionMatrix, false, projMat.elements); // may need to specify program here later
   }
 
   resizeCanvas();
+
+  document.onkeydown = keydown;
+  document.onkeyup = keyup;
 }
 
 function convertCoordsEvToGL(ev) {
@@ -366,9 +514,35 @@ function keydown(ev) {
     case "ShiftLeft":
       g_movementKeys.down = true;
       break;
+    case "Digit1":
+      selectBlock(BlockType.DIRT);
+      break;
+    case "Digit2":
+      selectBlock(BlockType.WOOD);
+      break;
+    case "Digit3":
+      selectBlock(BlockType.STONE);
+      break;
     default:
       break;
   }
+}
+
+function selectBlock(blockType) {
+  g_selectedBlock = blockType;
+
+  document
+    .querySelectorAll("#toolbar button[data-block]")
+    .forEach((btn) => btn.classList.remove("selected"));
+
+  const blockName = Object.keys(BlockType).find(
+    (key) => BlockType[key] === blockType,
+  );
+
+  const selectedBtn = document.querySelector(
+    `#toolbar button[data-block="${blockName}"]`,
+  );
+  if (selectedBtn) selectedBtn.classList.add("selected");
 }
 
 function keyup(ev) {
@@ -402,17 +576,14 @@ function keyup(ev) {
   }
 }
 
-function updateMovement(ev) {
+function updateMovement() {
+  // should calc this from pitch, not forward vec
   var forward = new Vector3([
     -g_viewMat.elements[8],
-    -g_viewMat.elements[9],
+    0,
     -g_viewMat.elements[10],
   ]);
-  var right = new Vector3([
-    g_viewMat.elements[0],
-    g_viewMat.elements[1],
-    g_viewMat.elements[2],
-  ]);
+  var right = new Vector3([g_viewMat.elements[0], 0, g_viewMat.elements[2]]);
 
   forward.normalize();
   right.normalize();
@@ -420,28 +591,59 @@ function updateMovement(ev) {
   let moveSpeed = 0.15 * g_dTime;
   let turnSpeedMod = 20;
 
+  // copy current position for collission detection
+  let nextPos = [...g_eye];
+
   if (g_movementKeys.forward) {
-    g_eye[0] -= forward.elements[0] * moveSpeed;
-    //g_eye[1] += forward.elements[1] * moveSpeed;
-    g_eye[2] += forward.elements[2] * moveSpeed;
+    nextPos[0] -= forward.elements[0] * moveSpeed;
+    nextPos[1] += forward.elements[1] * moveSpeed;
+    nextPos[2] += forward.elements[2] * moveSpeed;
   }
-
   if (g_movementKeys.backward) {
-    g_eye[0] += forward.elements[0] * moveSpeed;
-    //g_eye[1] -= forward.elements[1] * moveSpeed;
-    g_eye[2] -= forward.elements[2] * moveSpeed;
+    nextPos[0] += forward.elements[0] * moveSpeed;
+    nextPos[2] -= forward.elements[2] * moveSpeed;
   }
-
   if (g_movementKeys.left) {
-    g_eye[0] -= right.elements[0] * moveSpeed;
-    //g_eye[1] -= right.elements[1] * moveSpeed;
-    g_eye[2] += right.elements[2] * moveSpeed;
+    nextPos[0] -= right.elements[0] * moveSpeed;
+    nextPos[2] += right.elements[2] * moveSpeed;
+  }
+  if (g_movementKeys.right) {
+    nextPos[0] += right.elements[0] * moveSpeed;
+    nextPos[2] -= right.elements[2] * moveSpeed;
+  }
+  if (g_movementKeys.up && g_grounded) {
+    console.log("jumped");
+    g_yvel = JUMP_STRENGTH;
+    g_grounded = false;
   }
 
-  if (g_movementKeys.right) {
-    g_eye[0] += right.elements[0] * moveSpeed;
-    //g_eye[1] += right.elements[1] * moveSpeed;
-    g_eye[2] -= right.elements[2] * moveSpeed;
+  g_yvel += GRAVITY;
+  g_yvel = Math.max(g_yvel, TERMINAL_VELOCITY);
+  nextPos[1] = g_eye[1] + g_yvel * g_dTime;
+  //if (g_movementKeys.down) {
+  //  nextPos[1] -= moveSpeed;
+  //}
+
+  // test axes separately to handle moving properly
+  const testX = [nextPos[0], g_eye[1], g_eye[2]];
+  const testY = [g_eye[0], nextPos[1], g_eye[2]];
+  const testZ = [g_eye[0], g_eye[1], nextPos[2]];
+
+  if (!checkCollision(testX, g_testChunk)) {
+    g_eye[0] = nextPos[0];
+  }
+  if (!checkCollision(testY, g_testChunk)) {
+    g_eye[1] = nextPos[1];
+    g_grounded = false;
+  } else {
+    if (g_yvel < 0) {
+      g_grounded = true;
+    }
+
+    g_yvel = 0;
+  }
+  if (!checkCollision(testZ, g_testChunk)) {
+    g_eye[2] = nextPos[2];
   }
 
   if (g_movementKeys.rotateL) {
@@ -450,20 +652,10 @@ function updateMovement(ev) {
   if (g_movementKeys.rotateR) {
     g_yaw += moveSpeed * turnSpeedMod;
   }
-  if (g_movementKeys.up) {
-    g_eye[1] += moveSpeed;
-  }
-  if (g_movementKeys.down) {
-    g_eye[1] -= moveSpeed;
-  }
 }
-
 function main() {
-  setupUI();
   setupWebGL();
-
-  document.onkeydown = keydown;
-  document.onkeyup = keyup;
+  setupUI();
 
   console.log(
     gl.getParameter(gl.MAX_COMBINED_TEXTURE_IMAGE_UNITS) +
@@ -473,85 +665,37 @@ function main() {
   gl.clearColor(0.9725, 0.8863, 0.5176, 1.0);
   gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 
-  chunkFillLayer(g_testChunk, 0, BlockType.DIRT);
-  chunkSetBlock(g_testChunk, BlockType.STONE, [16, 1, 31]);
-  chunkSetBlock(g_testChunk, BlockType.WOOD, [16, 2, 31]);
-  chunkSetBlock(g_testChunk, BlockType.STONE, [16, 3, 31]);
-  chunkSetBlock(g_testChunk, BlockType.STONE, [16, 6, 31]);
+  //chunkSetBlock(g_testChunk, BlockType.STONE, [16, 1, 31]);
+  //chunkSetBlock(g_testChunk, BlockType.WOOD, [16, 2, 31]);
+  //chunkSetBlock(g_testChunk, BlockType.STONE, [16, 3, 31]);
+  //chunkSetBlock(g_testChunk, BlockType.STONE, [16, 6, 31]);
+  //chunkSetBlock(g_testChunk, BlockType.STONE, [8, 1, 31]);
 
-  // pillars  in corners of world
-  chunkSetBlock(g_testChunk, BlockType.STONE, [
-    CHUNK_SIZE.x - 1,
-    1,
-    CHUNK_SIZE.z - 1,
-  ]);
-  chunkSetBlock(g_testChunk, BlockType.STONE, [
-    CHUNK_SIZE.x - 1,
-    2,
-    CHUNK_SIZE.z - 1,
-  ]);
-  chunkSetBlock(g_testChunk, BlockType.STONE, [
-    CHUNK_SIZE.x - 1,
-    3,
-    CHUNK_SIZE.z - 1,
-  ]);
-  chunkSetBlock(g_testChunk, BlockType.STONE, [
-    CHUNK_SIZE.x - 1,
-    4,
-    CHUNK_SIZE.z - 1,
-  ]);
-  chunkSetBlock(g_testChunk, BlockType.STONE, [
-    CHUNK_SIZE.x - 1,
-    5,
-    CHUNK_SIZE.z - 1,
-  ]);
-  chunkSetBlock(g_testChunk, BlockType.STONE, [
-    CHUNK_SIZE.x - 1,
-    6,
-    CHUNK_SIZE.z - 1,
-  ]);
-  chunkSetBlock(g_testChunk, BlockType.STONE, [
-    CHUNK_SIZE.x - 1,
-    7,
-    CHUNK_SIZE.z - 1,
-  ]);
-
-  chunkSetBlock(g_testChunk, BlockType.STONE, [0, 1, CHUNK_SIZE.z - 1]);
-  chunkSetBlock(g_testChunk, BlockType.STONE, [0, 2, CHUNK_SIZE.z - 1]);
-  chunkSetBlock(g_testChunk, BlockType.STONE, [0, 3, CHUNK_SIZE.z - 1]);
-  chunkSetBlock(g_testChunk, BlockType.STONE, [0, 4, CHUNK_SIZE.z - 1]);
-  chunkSetBlock(g_testChunk, BlockType.STONE, [0, 5, CHUNK_SIZE.z - 1]);
-  chunkSetBlock(g_testChunk, BlockType.STONE, [0, 6, CHUNK_SIZE.z - 1]);
-  chunkSetBlock(g_testChunk, BlockType.STONE, [0, 7, CHUNK_SIZE.z - 1]);
-  chunkSetBlock(g_testChunk, BlockType.STONE, [0, 1, CHUNK_SIZE.z - 1]);
-
-  chunkSetBlock(g_testChunk, BlockType.STONE, [0, 1, 0]);
-  chunkSetBlock(g_testChunk, BlockType.STONE, [0, 2, 0]);
-  chunkSetBlock(g_testChunk, BlockType.STONE, [0, 3, 0]);
-  chunkSetBlock(g_testChunk, BlockType.STONE, [0, 4, 0]);
-  chunkSetBlock(g_testChunk, BlockType.STONE, [0, 5, 0]);
-  chunkSetBlock(g_testChunk, BlockType.STONE, [0, 6, 0]);
-  chunkSetBlock(g_testChunk, BlockType.STONE, [0, 7, 0]);
-
-  chunkSetBlock(g_testChunk, BlockType.STONE, [CHUNK_SIZE.x - 1, 1, 0]);
-  chunkSetBlock(g_testChunk, BlockType.STONE, [CHUNK_SIZE.x - 1, 2, 0]);
-  chunkSetBlock(g_testChunk, BlockType.STONE, [CHUNK_SIZE.x - 1, 3, 0]);
-  chunkSetBlock(g_testChunk, BlockType.STONE, [CHUNK_SIZE.x - 1, 4, 0]);
-  chunkSetBlock(g_testChunk, BlockType.STONE, [CHUNK_SIZE.x - 1, 5, 0]);
-  chunkSetBlock(g_testChunk, BlockType.STONE, [CHUNK_SIZE.x - 1, 6, 0]);
-  chunkSetBlock(g_testChunk, BlockType.STONE, [CHUNK_SIZE.x - 1, 7, 0]);
-
+  // need to make a chunk by default so that vertices can render on the first frame.
+  // or could wait to laod world to start requestAnimationFrame
+  g_testChunk = newChunk();
   g_vertices = chunkGenerateMesh(g_testChunk);
+
+  loadDefaultWorld();
 
   //setup projection matrix
   var projMat = new Matrix4();
   projMat.setPerspective(60, canvas.width / canvas.height, 0.1, 100);
   gl.uniformMatrix4fv(u_ProjectionMatrix, false, projMat.elements);
 
-  g_modelMat.translate(-CHUNK_SIZE.x / 2, -2, -CHUNK_SIZE.z / 2);
-  gl.uniformMatrix4fv(u_ModelMatrix, false, g_modelMat.elements);
+  //g_modelMat.translate(-CHUNK_SIZE.x / 2, -2, -CHUNK_SIZE.z / 2);
+  //gl.uniformMatrix4fv(u_ModelMatrix, false, g_modelMat.elements);
+  //
+
+  // currently we're basing player position around g_eye
+  // this is not ideal and should be abstracted
+  g_eye = [CHUNK_SIZE.x / 2, 3, CHUNK_SIZE.z / 2];
 
   requestAnimationFrame(tick);
+}
+
+function toRadians(degrees) {
+  return degrees * (Math.PI / 180);
 }
 
 function tick() {
@@ -559,40 +703,47 @@ function tick() {
   let rawDTime = currentTime - g_prevTime;
   g_prevTime = currentTime;
   g_dTime = rawDTime / TARGET_FRAME_TIME;
+  g_dTime = Math.min(g_dTime, 2.0);
 
   g_stats.begin();
 
   updateMovement();
   updateRotationMatrix();
+
   renderScene();
 
   g_stats.end();
   requestAnimationFrame(tick);
 }
 
-function updateRotationMatrix() {
-  //didn't put g_eye/at/up into Vector3s...
-  // this is probably prett yslow
-  const radYaw = (Math.PI / 180) * g_yaw;
-  const radPitch = (Math.PI / 180) * g_pitch;
+function checkCollision(newPos, chunk) {
+  //get the min and max blocks we're in in whatever new pos we're trying to go to
+  const minX = Math.floor(newPos[0] - PLAYER_HALF_WIDTH);
+  const maxX = Math.floor(newPos[0] + PLAYER_HALF_WIDTH);
+  const minY = Math.floor(newPos[1] - PLAYER_EYE_TO_GROUND);
+  const maxY = Math.floor(newPos[1] + PLAYER_EYE_TO_HEAD);
+  const minZ = Math.floor(newPos[2] - PLAYER_HALF_WIDTH);
+  const maxZ = Math.floor(newPos[2] + PLAYER_HALF_WIDTH);
 
-  const front = [
-    Math.cos(radPitch) * Math.cos(radYaw),
-    Math.sin(radPitch),
-    Math.cos(radPitch) * Math.sin(radYaw),
-  ];
-
-  const length = Math.hypot(front[0], front[1], front[2]);
-  front[0] /= length;
-  front[1] /= length;
-  front[2] /= length;
-
-  g_at = [g_eye[0] + front[0], g_eye[1] + front[1], g_eye[2] + front[2]];
+  //go through each block and see if we're hitting anything
+  for (let x = minX; x <= maxX; x++) {
+    for (let y = minY; y <= maxY; y++) {
+      for (let z = minZ; z <= maxZ; z++) {
+        if (chunkIsSolidBlock(chunk, [x, y, z])) {
+          return true;
+        }
+      }
+    }
+  }
+  return false;
 }
 
-function renderScene() {
-  // Clear <canvas>
-  gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+function updateRotationMatrix() {
+  g_at[0] =
+    g_eye[0] + Math.cos(toRadians(g_yaw)) * Math.cos(toRadians(g_pitch));
+  g_at[1] = g_eye[1] + Math.sin(toRadians(g_pitch));
+  g_at[2] =
+    g_eye[2] + Math.sin(toRadians(g_yaw)) * Math.cos(toRadians(g_pitch));
 
   g_viewMat.setLookAt(
     g_eye[0],
@@ -605,8 +756,107 @@ function renderScene() {
     g_up[1],
     g_up[2],
   );
+}
+
+function selectBlock(blockType) {
+  g_selectedBlock = blockType;
+}
+
+function getLookAtBlock() {
+  // there is a more efficient way to have and use this information given what is already in the code
+  const forwardX = g_at[0] - g_eye[0];
+  const forwardY = g_at[1] - g_eye[1];
+  const forwardZ = g_at[2] - g_eye[2];
+
+  const forward = new Vector3([forwardX, forwardY, forwardZ]);
+  forward.normalize();
+
+  let rayPos = g_eye.slice();
+  const stepSize = 0.1;
+  const maxDistance = 10.0;
+
+  for (let d = 0; d < maxDistance; d += stepSize) {
+    rayPos[0] += forward.elements[0] * stepSize;
+    rayPos[1] += forward.elements[1] * stepSize;
+    rayPos[2] += forward.elements[2] * stepSize;
+
+    const blockX = Math.floor(rayPos[0]);
+    const blockY = Math.floor(rayPos[1]);
+    const blockZ = Math.floor(rayPos[2]);
+    console.log(blockX + " " + blockY + " " + blockZ);
+
+    if (
+      blockX >= 0 &&
+      blockX < CHUNK_SIZE.x &&
+      blockY >= 0 &&
+      blockY < CHUNK_SIZE.y &&
+      blockZ >= 0 &&
+      blockZ < CHUNK_SIZE.z
+    ) {
+      if (chunkIsSolidBlock(g_testChunk, [blockX, blockY, blockZ])) {
+        return [blockX, blockY, blockZ];
+      }
+    }
+  }
+}
+
+function getLookAtBlocMinusOne() {
+  const forwardX = g_at[0] - g_eye[0];
+  const forwardY = g_at[1] - g_eye[1];
+  const forwardZ = g_at[2] - g_eye[2];
+
+  const forward = new Vector3([forwardX, forwardY, forwardZ]);
+  forward.normalize();
+
+  let rayPos = g_eye.slice();
+  const stepSize = 0.1;
+  const maxDistance = 10.0;
+
+  let lastEmptyBlock = null;
+
+  for (let d = 0; d < maxDistance; d += stepSize) {
+    rayPos[0] += forward.elements[0] * stepSize;
+    rayPos[1] += forward.elements[1] * stepSize;
+    rayPos[2] += forward.elements[2] * stepSize;
+
+    const blockX = Math.floor(rayPos[0]);
+    const blockY = Math.floor(rayPos[1]);
+    const blockZ = Math.floor(rayPos[2]);
+
+    if (
+      blockX >= 0 &&
+      blockX < CHUNK_SIZE.x &&
+      blockY >= 0 &&
+      blockY < CHUNK_SIZE.y &&
+      blockZ >= 0 &&
+      blockZ < CHUNK_SIZE.z
+    ) {
+      const pos = [blockX, blockY, blockZ];
+      if (chunkIsSolidBlock(g_testChunk, pos)) {
+        return lastEmptyBlock;
+      } else {
+        lastEmptyBlock = pos;
+      }
+    }
+  }
+
+  return null; // No solid block hit within maxDistance
+}
+function updateChunkMesh() {
+  g_vertices = chunkGenerateMesh(g_testChunk);
+
+  vaoExt.bindVertexArrayOES(g_Vao);
+  gl.uniform1f(u_ColorWeight, 0.0);
+  gl.bindBuffer(gl.ARRAY_BUFFER, g_Vbo);
+  gl.bufferData(gl.ARRAY_BUFFER, g_vertices, gl.STATIC_DRAW);
+  vaoExt.bindVertexArrayOES(null);
+}
+
+function renderScene() {
+  gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+
   gl.uniformMatrix4fv(u_ViewMatrix, false, g_viewMat.elements);
 
-  gl.bufferData(gl.ARRAY_BUFFER, g_vertices, gl.STATIC_DRAW);
+  vaoExt.bindVertexArrayOES(g_Vao);
   gl.drawArrays(gl.TRIANGLES, 0, g_vertices.length / 8);
 }

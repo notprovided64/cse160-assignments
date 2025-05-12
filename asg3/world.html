@@ -17,10 +17,26 @@
 </head>
 
 <body onload="main()">
+
+  <div id="toolbar">
+    <p>select block: </p>
+    <!--https://developer.mozilla.org/en-US/docs/Web/HTML/How_to/Use_data_attributes-->
+    <button data-block="DIRT" onclick="selectBlock(BlockType.DIRT)">Dirt</button>
+    <button data-block="WOOD" onclick="selectBlock(BlockType.WOOD)">Wood</button>
+    <button data-block="STONE" onclick="selectBlock(BlockType.STONE)">Stone</button>
+    <p>world options: </p>
+    <button onclick="saveWorld()">Save World</button>
+    <button onclick="loadWorld()">Load World</button>
+  </div>
   <canvas id="webgl" width="400" height="400">
     Please use a browser that supports "canvas"
   </canvas>
-
+  <div id="crosshair">+</div>
+  <div id="bottom-toolbar">
+    <p>This is my very basic minecraft clone rendering a single 64x46 chunk, click once to lock your mouse into the game
+      and again to mine. Right click to place the block you've selected in the top menu. (Esc to free mouse). Feel free
+      to find your way through the maze, then try your hand at the parkour above.</p>
+  </div>
   <style>
     * {
       margin: 0;
@@ -41,6 +57,79 @@
       display: block;
       margin: auto auto;
       border: 1px solid #333;
+    }
+
+    #crosshair {
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      font-size: 32px;
+      color: white;
+      pointer-events: none;
+    }
+
+    #toolbar {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      background: rgba(0, 0, 0, 0.6);
+      padding: 10px;
+      display: flex;
+      justify-content: center;
+      gap: 10px;
+      z-index: 10;
+    }
+
+    #toolbar button {
+      background: #444;
+      color: white;
+      border: none;
+      padding: 8px 12px;
+      font-size: 14px;
+      cursor: pointer;
+      border-radius: 4px;
+    }
+
+    button.selected {
+      outline: 2px solid yellow;
+      background-color: #ddd;
+    }
+
+    #toolbar button:hover {
+      background: #666;
+    }
+
+    #bottom-toolbar {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      width: 100%;
+      background: rgba(0, 0, 0, 0.6);
+      padding: 10px;
+      display: flex;
+      justify-content: center;
+      gap: 10px;
+      z-index: 10;
+      height: 40px;
+    }
+
+    #bottom-toolbar p {
+      color: #ddd;
+      font-weight: bold;
+      margin: 0;
+      align-self: center;
+    }
+
+
+    #toolbar p {
+      color: #ddd;
+      font-weight: bold;
+      margin: 0 10px;
+      align-self: center;
+      < !--border-left: 2px solid #888;
+      -->padding-left: 10px;
     }
   </style>
 
