@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8" />
+  <title>lighting</title>
+</head>
+
+<body>
+
+  <div id="toolbar">
+    <p>options</p>
+    <button onclick="toggleShowNormals()">toggle normals</button>
+    <button onclick="toggleLighting()">toggle lighting</button>
+    <p>
+      LightX <input type="range" min="-250" max="250" value="0" class"slider" id"lightSlideX">
+      LightY <input type="range" min="-250" max="250" value="0" class"slider" id"lightSlideY">
+      LightZ <input type="range" min="-250" max="250" value="0" class"slider" id"lightSlideZ">
+
+    </p>
+  </div>
+  <canvas id="webgl" width="400" height="400">
+    Please use a browser that supports "canvas"
+  </canvas>
+  <!-- <div id="bottom-toolbar"> -->
+  <!--   <p>lighting test</p> -->
+  <!-- </div> -->
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+    }
+
+    html,
+    body {
+      width: 100%;
+      height: 100%;
+    }
+
+    body {
+      overflow: hidden;
+    }
+
+    canvas {
+      display: block;
+      margin: auto auto;
+      border: 1px solid #333;
+    }
+
+    #toolbar {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      background: rgba(0, 0, 0, 0.6);
+      padding: 10px;
+      display: flex;
+      justify-content: center;
+      gap: 10px;
+      z-index: 10;
+    }
+
+    #toolbar button {
+      background: #444;
+      color: white;
+      border: none;
+      padding: 8px 12px;
+      font-size: 14px;
+      cursor: pointer;
+      border-radius: 4px;
+    }
+
+    button.selected {
+      outline: 2px solid yellow;
+      background-color: #ddd;
+    }
+
+    #toolbar button:hover {
+      background: #666;
+    }
+
+    #bottom-toolbar {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      width: 100%;
+      background: rgba(0, 0, 0, 0.6);
+      padding: 10px;
+      display: flex;
+      justify-content: center;
+      gap: 10px;
+      z-index: 10;
+      height: 40px;
+    }
+
+    #bottom-toolbar p {
+      color: #ddd;
+      font-weight: bold;
+      margin: 0;
+      align-self: center;
+    }
+
+
+    #toolbar p {
+      color: #ddd;
+      font-weight: bold;
+      margin: 0 10px;
+      align-self: center;
+      < !--border-left: 2px solid #888;
+      -->padding-left: 10px;
+    }
+  </style>
+  <script src="https://mrdoob.github.io/stats.js/build/stats.min.js"></script>
+  <script src="../lib/webgl-utils.js"></script>
+  <script src="../lib/webgl-debug.js"></script>
+  <script src="../lib/cuon-utils.js"></script>
+  <script src="../lib/cuon-matrix.js"></script>
+  <script src="Camera.js"></script>
+  <script src="Controls.js"></script>
+  <script src="Cube.js"></script>
+  <script src="Sphere.js"></script>
+  <script src="index.js"></script>
+</body>
+
+</html>
