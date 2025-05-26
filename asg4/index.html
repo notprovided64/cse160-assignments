@@ -13,10 +13,9 @@
     <button onclick="toggleShowNormals()">toggle normals</button>
     <button onclick="toggleLighting()">toggle lighting</button>
     <p>
-      LightX <input type="range" min="-250" max="250" value="0" class"slider" id"lightSlideX">
-      LightY <input type="range" min="-250" max="250" value="0" class"slider" id"lightSlideY">
-      LightZ <input type="range" min="-250" max="250" value="0" class"slider" id"lightSlideZ">
-
+      LightX <input type="range" min="-250" max="250" value="0" class="slider" id="lightSlideX">
+      LightY <input type="range" min="-250" max="250" value="0" class="slider" id="lightSlideY">
+      LightZ <input type="range" min="-250" max="250" value="0" class="slider" id="lightSlideZ">
     </p>
   </div>
   <canvas id="webgl" width="400" height="400">
@@ -115,6 +114,8 @@
   <script src="../lib/webgl-debug.js"></script>
   <script src="../lib/cuon-utils.js"></script>
   <script src="../lib/cuon-matrix.js"></script>
+  <script src="ObjLoader.js"></script>
+  <script src="Model.js"></script>
   <script src="Camera.js"></script>
   <script src="Controls.js"></script>
   <script src="Cube.js"></script>

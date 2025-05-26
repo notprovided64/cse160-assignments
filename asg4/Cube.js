@@ -5,7 +5,7 @@
 // import { createProgram } from "../../lib/cuon-utils";
 
 class Cube {
-  constructor(size = 1.0, color = new Vector3([0.5, 0.5, 0, 5])) {
+  constructor(size = 1.0, color = new Vector3([0.8, 0.8, 0, 1])) {
     this.vertexBuffer = null;
     this.indexBuffer = null;
     this.uvBuffer = null;
@@ -28,7 +28,7 @@ class Cube {
     this.modelMatrix = new Matrix4();
     this.normalMatrix = new Matrix4();
 
-    this.showNormals = true;
+    this.showNormals = false;
     this.showLighting = true;
 
     this.generateCube(size);
@@ -48,21 +48,25 @@ class Cube {
 
     varying vec3 vNormal;
     varying float vHeight;
+    varying vec4 vPosition;
 
     void main() {
       vec4 worldPosition = modelMatrix * vec4(position, 1.0);
       gl_Position = projectionMatrix * viewMatrix * worldPosition;
 
       vNormal = (normalMatrix * vec4(normal, 1.0)).xyz;
-      vHeight = worldPosition.y;
+
+      vPosition = worldPosition;
     }`;
 
     this.fragmentShader = `
     precision mediump float;
     varying vec3 vNormal;
-    varying float vHeight;
+    varying vec4 vPosition;
 
     uniform vec3 color;
+    uniform vec3 lightPos;
+    uniform vec3 cameraPos;
     uniform bool showNormals;
     uniform bool showLighting;
 
@@ -73,6 +77,38 @@ class Cube {
       } else {
         gl_FragColor = vec4(color, 1.0);
       }
+
+      if (showLighting) {
+        vec3 lightVec =  lightPos - vec3(vPosition);
+
+        // hacky distance visualization
+        //
+        // float r = length(lightVec);
+        // if (r < 5.0) {
+        //   gl_FragColor = vec4(1, 0, 0, 1.0);
+        // } else if (r < 50.0) {
+        //   gl_FragColor = vec4(0, 1, 0, 1.0);
+        // }
+
+        // non realistic lighting r^2ed
+        //
+        // gl_FragColor = vec4(vec3(gl_FragColor)/(r*r / 500.0), 1);
+        
+        // n dot l
+        vec3 l = normalize(lightVec);
+        vec3 n = normalize(vNormal);
+        float prod = max(dot(n,l), 0.0);
+
+        vec3 r = reflect(-l, n);
+        vec3 e = normalize(cameraPos - vec3(vPosition));
+
+        vec3 diffuse = vec3(gl_FragColor) * prod;
+        vec3 ambient = vec3(gl_FragColor) * 0.3;
+        float specular = pow(max(dot(e,r), 0.0), 100.0);
+
+        gl_FragColor = vec4(diffuse+ambient+specular, 1.0);
+      }
+
     }`;
     // old frag shader code
     // float h = (vHeight * 0.1 + 1.0) / 5.0;
@@ -149,7 +185,7 @@ class Cube {
     this.normalMatrix.set(this.modelMatrix).invert().transpose();
   }
 
-  render(gl, camera) {
+  render(gl, camera, lightpos1) {
     if (this.program === null) {
       this.setProgram(gl);
     }
@@ -178,6 +214,8 @@ class Cube {
     const showNormals = gl.getUniformLocation(this.program, "showNormals");
     const showLighting = gl.getUniformLocation(this.program, "showLighting");
     const color = gl.getUniformLocation(this.program, "color");
+    const lightPos = gl.getUniformLocation(this.program, "lightPos");
+    const cameraPos = gl.getUniformLocation(this.program, "cameraPos");
 
     gl.uniformMatrix4fv(modelMatrix, false, this.modelMatrix.elements);
     gl.uniformMatrix4fv(normalMatrix, false, this.normalMatrix.elements);
@@ -191,6 +229,9 @@ class Cube {
     gl.uniform1i(showNormals, this.showNormals);
     gl.uniform1i(showLighting, this.showLighting);
     gl.uniform3f(color, ...this.color.elements);
+    gl.uniform3f(lightPos, ...this.color.elements);
+    gl.uniform3f(lightPos, ...lightpos1);
+    gl.uniform3f(cameraPos, ...camera.position.elements);
 
     gl.bindBuffer(gl.ARRAY_BUFFER, this.vertexBuffer);
     gl.bufferData(gl.ARRAY_BUFFER, this.vertices, gl.DYNAMIC_DRAW);
