@@ -8,7 +8,7 @@
   {
     "imports": {
       "three": "https://cdn.jsdelivr.net/npm/three@0.177.0/build/three.module.js",
-      "three/addons/": "https://cdn.jsdelivr.net/npm/three@<version>/examples/jsm/"
+      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.177.0/examples/jsm/"
     }
   }
   </script>
@@ -17,11 +17,11 @@
 
 <body>
 
-  <!--<div id="toolbar">-->
-  <!--  <p>options</p>-->
-  <!--  <button onclick="toggleShowNormals()">button 1</button>-->
-  <!--  <button onclick="toggleLighting()">button 2</button>-->
-  <!--</div>-->
+  <div id="toolbar">
+    <p><b>how many tigers do you think there are</b></p>
+    <input type="number" id="guessInput" min="0" max="100" />
+    <button onclick="makeGuess()">guess</button>
+  </div>
   <canvas id="c">
     Please use a browser that supports "canvas"
   </canvas>
@@ -56,6 +56,9 @@
       justify-content: center;
       gap: 10px;
       z-index: 10;
+    }
+    #status {
+      width: 150;
     }
 
     #toolbar button {
