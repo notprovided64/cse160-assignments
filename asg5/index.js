@@ -200,7 +200,7 @@ function loadGlbModel(path, name) {
 function loadModels() {
   models = {};
 
-  loadGlbModel('resources/models/tiger.glb', "tiger");
+  loadGlbModel('resources/models/Tiger.glb', "tiger");
 }
 
 function initScene() {
